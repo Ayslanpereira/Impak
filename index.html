@@ -535,10 +535,11 @@ textarea.field-input{resize:vertical;min-height:80px;}
   <div class="sidebar-api">
     <div class="api-label">API Key Anthropic</div>
     <div class="api-input-wrap">
-      <input class="api-input" id="apiKeyInput" type="password" placeholder="sk-ant-..." oninput="saveApiKey(this.value)">
+      <input class="api-input" id="apiKeyInput" type="password" placeholder="Cole sua chave aqui...">
       <button class="api-toggle" onclick="toggleApiVis()">👁</button>
     </div>
-    <div class="api-status">
+    <button onclick="saveApiKeyBtn()" style="width:100%;margin-top:6px;padding:7px;background:var(--accent);color:#0c0f0a;border:none;border-radius:4px;font-family:'DM Mono',monospace;font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;cursor:pointer;">✓ Confirmar Chave</button>
+    <div class="api-status" style="margin-top:6px;">
       <div class="api-dot" id="apiDot"></div>
       <span id="apiStatusText" style="font-family:'DM Mono',monospace;font-size:10px;color:var(--text-dim)">Não configurada</span>
     </div>
@@ -644,13 +645,49 @@ textarea.field-input{resize:vertical;min-height:80px;}
     <div class="sec">03 — Relatório de Conferência</div>
     <div class="result-header">
       <div class="pills" id="resultPills"></div>
-      <div style="display:flex;gap:8px;">
-        <button class="btn btn-ghost btn-sm" onclick="printReport()">🖨 Imprimir</button>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+        <button class="btn btn-ghost btn-sm" onclick="exportPDF()">📄 PDF</button>
         <button class="btn btn-primary btn-sm" onclick="showPage('processos')">Ver Histórico</button>
       </div>
     </div>
+
+    <!-- Message Generator -->
+    <div style="display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap;">
+      <button onclick="openMsgModal('agent','pt')" style="flex:1;min-width:180px;padding:14px;background:var(--surface2);border:1px solid var(--border2);border-radius:8px;cursor:pointer;text-align:left;transition:all 0.15s;" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border2)'">
+        <div style="font-size:18px;margin-bottom:6px;">🚢</div>
+        <div style="font-family:'DM Mono',monospace;font-size:10px;color:var(--accent);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:3px;">Agente de Cargas</div>
+        <div style="font-size:12px;color:var(--text-dim);">Correção do BL · Português</div>
+      </button>
+      <button onclick="openMsgModal('supplier','en')" style="flex:1;min-width:180px;padding:14px;background:var(--surface2);border:1px solid var(--border2);border-radius:8px;cursor:pointer;text-align:left;transition:all 0.15s;" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border2)'">
+        <div style="font-size:18px;margin-bottom:6px;">🏭</div>
+        <div style="font-family:'DM Mono',monospace;font-size:10px;color:var(--accent);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:3px;">Fornecedor</div>
+        <div style="font-size:12px;color:var(--text-dim);">Invoice & Packing List · English</div>
+      </button>
+      <button onclick="openMsgModal('all','pt')" style="flex:1;min-width:180px;padding:14px;background:var(--surface2);border:1px solid var(--border2);border-radius:8px;cursor:pointer;text-align:left;transition:all 0.15s;" onmouseover="this.style.borderColor='var(--warn)'" onmouseout="this.style.borderColor='var(--border2)'">
+        <div style="font-size:18px;margin-bottom:6px;">📋</div>
+        <div style="font-family:'DM Mono',monospace;font-size:10px;color:var(--warn);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:3px;">Relatório Completo</div>
+        <div style="font-size:12px;color:var(--text-dim);">Todas as divergências · PT/EN/ES</div>
+      </button>
+    </div>
     <div id="checkGroups"></div>
     <div id="alertsArea"></div>
+    <div id="divPanelWrap" style="display:none;margin-top:28px;">
+      <div class="sec">Divergências — Gestão e Resolução</div>
+      <div id="divPanel"></div>
+    </div>
+
+    <!-- Divergencias Panel -->
+    <div id="divPanelWrap" style="display:none;margin-top:28px;">
+      <div class="sec" style="margin-bottom:14px;">
+        <span id="divPanelTitle">Divergências — Gestão e Resolução</span>
+        <select id="langSelect2" class="field-input" onchange="document.getElementById('langSelect').value=this.value;renderDivPanel();" style="width:auto;padding:4px 10px;font-size:11px;margin-left:8px;">
+          <option value="pt">🇧🇷 PT</option>
+          <option value="en">🇺🇸 EN</option>
+          <option value="es">🇪🇸 ES</option>
+        </select>
+      </div>
+      <div id="divPanel"></div>
+    </div>
 
     <div class="sec" style="margin-top:28px;">04 — Dados Extraídos</div>
     <div id="docCards"></div>
@@ -669,6 +706,29 @@ textarea.field-input{resize:vertical;min-height:80px;}
     <div class="modal-actions">
       <button class="btn btn-danger btn-sm" id="modalDeleteBtn">Excluir</button>
       <button class="btn btn-ghost" onclick="document.getElementById('modalBg').classList.remove('show')">Fechar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Message Modal -->
+<div class="modal-bg" id="msgModalBg" onclick="closeMsgModal(event)" style="display:none;align-items:center;justify-content:center;">
+  <div class="modal" style="max-width:640px;width:95%;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+      <div>
+        <div class="modal-title" id="msgModalTitle">Mensagem</div>
+        <div class="modal-sub" id="msgModalSub"></div>
+      </div>
+      <select id="msgLangSelect" onchange="updateMsgContent()" class="field-input" style="width:auto;padding:6px 12px;font-size:12px;">
+        <option value="pt">🇧🇷 Português</option>
+        <option value="en">🇺🇸 English</option>
+        <option value="es">🇪🇸 Español</option>
+      </select>
+    </div>
+    <textarea id="msgContent" style="width:100%;min-height:320px;background:var(--bg2);border:1px solid var(--border2);border-radius:6px;padding:14px;font-family:'DM Mono',monospace;font-size:12px;color:var(--text);line-height:1.7;resize:vertical;outline:none;"></textarea>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;">
+      <button class="btn btn-ghost" onclick="document.getElementById('msgModalBg').style.display='none'">Fechar</button>
+      <button class="btn btn-ghost" onclick="copyMsg()">📋 Copiar para WhatsApp/E-mail</button>
+      <button class="btn btn-primary" onclick="exportMsgPDF()">📄 Exportar PDF</button>
     </div>
   </div>
 </div>
@@ -698,15 +758,44 @@ function guessType(name){
 }
 
 // ─── STORAGE ─────────────────────────────────────────────────────────
-function getProcesses(){ try{return JSON.parse(localStorage.getItem('impak_processes')||'[]')}catch{return[]} }
-function saveProcesses(p){ localStorage.setItem('impak_processes',JSON.stringify(p)) }
-function getApiKey(){ return localStorage.getItem('impak_apikey')||'' }
-function saveApiKey(v){ localStorage.setItem('impak_apikey',v); updateApiStatus(); }
+// Session storage - works everywhere
+let _apiKey = '';
+let _processes = [];
+try{ _processes = JSON.parse(localStorage.getItem('impak_processes')||'[]'); }catch(e){ _processes=[]; }
+
+function getProcesses(){ return _processes; }
+function saveProcesses(p){ _processes=p; try{ localStorage.setItem('impak_processes',JSON.stringify(p)); }catch(e){} }
+function getApiKey(){ return _apiKey; }
+function saveApiKey(v){ _apiKey=v.trim(); try{ localStorage.setItem('impak_apikey',v.trim()); }catch(e){} updateApiStatus(); }
+function saveApiKeyBtn(){
+  const input = document.getElementById('apiKeyInput');
+  const v = input.value.trim();
+  if(!v){ alert('Por favor, cole sua API Key no campo antes de confirmar.'); return; }
+  _apiKey = v;
+  // Force update DOM directly
+  const dot = document.getElementById('apiDot');
+  const txt = document.getElementById('apiStatusText');
+  dot.style.background = '#40c878';
+  dot.className = 'api-dot ok';
+  txt.textContent = 'Configurada';
+  txt.style.color = '#40c878';
+  checkReady();
+  // Try save to localStorage
+  try{ localStorage.setItem('impak_apikey', v); }catch(e){}
+  alert('API Key salva com sucesso! ' + v.length + ' caracteres.');
+}
 
 // ─── INIT ────────────────────────────────────────────────────────────
 window.onload = function(){
-  const k = getApiKey();
-  if(k){ document.getElementById('apiKeyInput').value = k; }
+  // Try to restore key from localStorage
+  try{
+    const saved = localStorage.getItem('impak_apikey');
+    if(saved && saved.length > 20){
+      _apiKey = saved.trim();
+      document.getElementById('apiKeyInput').value = saved.trim();
+    }
+  }catch(e){}
+  updateApiStatus();
   updateApiStatus();
   renderDashboard();
   renderProcessos();
@@ -733,13 +822,10 @@ function showPage(id){
 
 // ─── API STATUS ───────────────────────────────────────────────────────
 function updateApiStatus(){
-  const k = getApiKey();
   const dot = document.getElementById('apiDot');
   const txt = document.getElementById('apiStatusText');
-  if(k && k.startsWith('sk-ant-')){
+  if(_apiKey && _apiKey.length > 20){
     dot.className='api-dot ok'; txt.textContent='Configurada';
-  } else if(k) {
-    dot.className='api-dot err'; txt.textContent='Chave inválida';
   } else {
     dot.className='api-dot'; txt.textContent='Não configurada';
   }
@@ -769,7 +855,7 @@ function renderChips(){
 function checkReady(){
   const ref = document.getElementById('procRef').value.trim();
   const hasFiles = Object.keys(uploadedFiles).length >= 2;
-  const hasKey = getApiKey().startsWith('sk-ant-');
+  const hasKey = _apiKey.length > 20;
   document.getElementById('btnAnalyze').disabled = !(ref && hasFiles && hasKey);
 }
 function clearConferencia(){
@@ -822,24 +908,15 @@ async function runAnalysis(){
     setStep(2);
 
     const docList=[...new Set(Object.values(uploadedFiles).map(f=>DOC_LBL[f.type]))].join(', ');
-    content.push({type:'text',text:`Você é especialista em conferência documental de importação de pneus da Ásia para o Brasil.
-Analise os documentos (${docList}) e retorne APENAS JSON válido, sem texto antes/depois, sem markdown.
-{
-  "resumo":{"campos_ok":0,"divergencias":0,"alertas":0},
-  "grupos":[{"titulo":"string","campos":[{"campo":"string","doc1_label":"string","doc1_valor":"string","doc2_label":"string","doc2_valor":"string","status":"OK|DIVERGENCIA|AUSENTE","observacao":"string|null"}]}],
-  "alertas":["string"],
-  "documentos":[{"tipo":"string","dados":{"campo":"valor"}}]
-}
-Grupos: Identificação, Partes Envolvidas, Mercadoria, Valores, Logística.
-Campos: número invoice/BL/proforma, importador (nome,CNPJ,endereço), exportador, produtos (tamanho,marca,padrão), quantidades, pesos, CBM, preços USD, incoterm, portos, navio, containers, datas, pagamento.
-Seja minucioso. Sinalize qualquer divergência.`});
+    const prompt = 'Retorne APENAS JSON puro sem markdown sem texto extra. Voce e especialista em conferencia documental de importacao de pneus. Analise os documentos: ' + docList + '. JSON obrigatorio: {"resumo":{"campos_ok":0,"divergencias":0,"alertas":0},"grupos":[{"titulo":"Identificacao","campos":[{"campo":"campo","doc1_label":"doc","doc1_valor":"val","doc2_label":"doc","doc2_valor":"val","status":"OK","observacao":null}]}],"alertas":[],"documentos":[{"tipo":"tipo","dados":{"campo":"valor"}}]}. Grupos: Identificacao, Partes Envolvidas, Mercadoria, Valores, Logistica. Campos a verificar: numero invoice/BL/proforma, importador nome CNPJ endereco, exportador, produtos tamanho marca padrao, quantidades totais, pesos bruto liquido, CBM, precos unitarios e totais USD, incoterm, porto origem destino, navio, containers, datas, condicoes pagamento. Status OK se igual DIVERGENCIA se diferente AUSENTE se faltando.';
+    content.push({type:'text',text:prompt});
 
     setStep(3);
 
     const resp = await fetch('https://api.anthropic.com/v1/messages',{
       method:'POST',
       headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
-      body:JSON.stringify({model:'claude-sonnet-4-5',max_tokens:4000,messages:[{role:'user',content}]})
+      body:JSON.stringify({model:'claude-sonnet-4-5',max_tokens:8000,messages:[{role:'user',content}]})
     });
 
     if(!resp.ok){
@@ -850,9 +927,17 @@ Seja minucioso. Sinalize qualquer divergência.`});
     const data=await resp.json();
     const raw=(data.content||[]).map(i=>i.text||'').join('');
     let result;
-    try{ result=JSON.parse(raw.replace(/```json|```/gi,'').trim()); }
-    catch{ const m=raw.match(/\{[\s\S]*\}/); if(!m) throw new Error('JSON inválido'); result=JSON.parse(m[0]); }
-    if(!result.grupos) throw new Error('Resposta incompleta');
+    try{
+      let clean = raw.replace(/```json/gi,'').replace(/```/gi,'').trim();
+      const fb = clean.indexOf('{'); if(fb > 0) clean = clean.substring(fb);
+      const lb = clean.lastIndexOf('}'); if(lb >= 0) clean = clean.substring(0, lb+1);
+      result = JSON.parse(clean);
+    } catch(e1){
+      const m = raw.match(/\{[\s\S]*\}/);
+      if(!m) throw new Error('A IA nao retornou JSON valido. Tente novamente.');
+      try{ result = JSON.parse(m[0]); } catch(e2){ throw new Error('Erro ao interpretar resposta. Tente novamente.'); }
+    }
+    if(!result.grupos) throw new Error('Resposta incompleta. Tente novamente.');
 
     setStep(4);
 
@@ -871,7 +956,7 @@ Seja minucioso. Sinalize qualquer divergência.`});
       status,
       resumo: result.resumo,
       grupos: result.grupos,
-      alertas: result.alertas,
+      alertas: (result.alertas||[]).map(a=>typeof a==='object'?JSON.stringify(a):String(a)),
       documentos: result.documentos,
       log:[{msg:`Conferência realizada — ${Object.keys(uploadedFiles).length} documentos analisados`,time:new Date().toLocaleString('pt-BR'),type:'ok'}]
     };
@@ -977,6 +1062,26 @@ function renderResult(r){
       </div>
     </div>`).join('');
 
+  // Show divergence panel if there are divergences
+  const divs = getDivergencias();
+  const wrap = document.getElementById('divPanelWrap');
+  if(divs.length > 0){
+    wrap.style.display = 'block';
+    renderDivPanel();
+  } else {
+    wrap.style.display = 'none';
+  }
+
+  // Sync language selectors
+  document.getElementById('langSelect').onchange = function(){
+    document.getElementById('langSelect2').value = this.value;
+    renderDivPanel();
+  };
+  document.getElementById('langSelect2').onchange = function(){
+    document.getElementById('langSelect').value = this.value;
+    renderDivPanel();
+  };
+
   ra.scrollIntoView({behavior:'smooth',block:'start'});
 }
 
@@ -1041,7 +1146,7 @@ function openProcess(id){
     html+=`<div class="detail-section">
       <div class="sec" style="margin-bottom:12px">Alertas</div>
       <div class="alerts-box">
-        <ul>${p.alertas.map(a=>`<li>${a}</li>`).join('')}</ul>
+        <ul>${(p.alertas||[]).map(a=>`<li>${typeof a==='object'?JSON.stringify(a):a}</li>`).join('')}</ul>
       </div>
     </div>`;
   }
@@ -1100,7 +1205,459 @@ function closeModal(e){
 }
 
 // ─── PRINT ───────────────────────────────────────────────────────────
-function printReport(){ window.print(); }
+// ─── LANGUAGE ────────────────────────────────────────────────────────
+const LANG = {
+  pt:{divergencias:'Divergências Encontradas',alertas:'Alertas',processo:'Processo',exportador:'Exportador',data:'Data',campo:'Campo',doc1:'Documento 1',doc2:'Documento 2',status:'Status',obs:'Observação',semDiv:'Nenhuma divergência encontrada.',resolv:'Marcar como resolvido',resolvido:'✅ Resolvido',pendente:'⚠️ Pendente',nota:'Adicionar nota...',relatorio:'Relatório de Conferência Documental',geradoEm:'Gerado em'},
+  en:{divergencias:'Divergences Found',alertas:'Alerts',processo:'Process',exportador:'Exporter',data:'Date',campo:'Field',doc1:'Document 1',doc2:'Document 2',status:'Status',obs:'Note',semDiv:'No divergences found.',resolv:'Mark as resolved',resolvido:'✅ Resolved',pendente:'⚠️ Pending',nota:'Add note...',relatorio:'Documentary Review Report',geradoEm:'Generated on'},
+  es:{divergencias:'Divergencias Encontradas',alertas:'Alertas',processo:'Proceso',exportador:'Exportador',data:'Fecha',campo:'Campo',doc1:'Documento 1',doc2:'Documento 2',status:'Estado',obs:'Observación',semDiv:'No se encontraron divergencias.',resolv:'Marcar como resuelto',resolvido:'✅ Resuelto',pendente:'⚠️ Pendiente',nota:'Agregar nota...',relatorio:'Informe de Revisión Documental',geradoEm:'Generado el'}
+};
+function getLang(){ return document.getElementById('langSelect')?.value||'pt'; }
+function t(key){ return LANG[getLang()][key]||LANG['pt'][key]; }
+
+const divergResolved = {};
+
+function getDivergencias(){
+  if(!currentResult) return [];
+  const divs=[];
+  for(const grupo of currentResult.grupos||[]){
+    for(const c of grupo.campos||[]){
+      if(c.status==='DIVERGENCIA'||c.status==='AUSENTE') divs.push({grupo:grupo.titulo,...c});
+    }
+  }
+  return divs;
+}
+
+function renderDivPanel(){
+  const panel=document.getElementById('divPanel');
+  if(!panel) return;
+  const L=LANG[getLang()];
+  const divs=getDivergencias();
+  if(!divs.length){ panel.innerHTML=`<div style="padding:24px;text-align:center;color:var(--ok);font-size:14px;">✅ ${L.semDiv}</div>`; return; }
+  panel.innerHTML=divs.map((d,i)=>{
+    const key=`${d.grupo}-${d.campo}`;
+    const resolved=divergResolved[key];
+    return `<div class="div-card" style="background:var(--surface2);border:1px solid var(--border);border-left:3px solid ${d.status==='DIVERGENCIA'?'var(--danger)':'var(--warn)'};border-radius:8px;padding:16px 18px;margin-bottom:10px;">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+        <div style="flex:1;">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+            <span style="font-family:monospace;font-size:9px;color:var(--text-dim);text-transform:uppercase;">${d.grupo}</span>
+            <span class="div-status" style="font-size:10px;color:${resolved?'var(--ok)':'var(--warn)'}">${resolved?L.resolvido:L.pendente}</span>
+          </div>
+          <div style="font-size:14px;font-weight:600;color:var(--text-bright);margin-bottom:10px;">${d.campo}</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+            <div style="background:var(--surface);border:1px solid var(--border);border-radius:5px;padding:8px 12px;">
+              <div style="font-size:9px;color:var(--text-dim);margin-bottom:3px;">${d.doc1_label||L.doc1}</div>
+              <div style="font-size:13px;color:var(--text);">${d.doc1_valor||'—'}</div>
+            </div>
+            <div style="background:var(--surface);border:1px solid rgba(232,64,64,0.2);border-radius:5px;padding:8px 12px;">
+              <div style="font-size:9px;color:var(--text-dim);margin-bottom:3px;">${d.doc2_label||L.doc2}</div>
+              <div style="font-size:13px;color:var(--danger);">${d.doc2_valor||'—'}</div>
+            </div>
+          </div>
+          ${d.observacao?`<div style="font-size:12px;color:var(--warn);font-style:italic;margin-bottom:8px;">↳ ${d.observacao}</div>`:''}
+          <input class="div-nota field-input" placeholder="${L.nota}" value="${resolved?.nota||''}" style="font-size:12px;padding:7px 10px;">
+        </div>
+        <button onclick="toggleResolved('${key}',this)" style="background:${resolved?'rgba(64,200,120,0.1)':'rgba(168,212,72,0.1)'};border:1px solid ${resolved?'var(--ok)':'var(--accent)'};color:${resolved?'var(--ok)':'var(--accent)'};border-radius:6px;padding:8px 14px;font-family:monospace;font-size:10px;cursor:pointer;white-space:nowrap;">
+          ${resolved?'↩ Desfazer':L.resolv}
+        </button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function toggleResolved(key,btn){
+  if(divergResolved[key]){
+    delete divergResolved[key];
+    btn.closest('.div-card').querySelector('.div-status').textContent=t('pendente');
+    btn.closest('.div-card').querySelector('.div-status').style.color='var(--warn)';
+    btn.textContent=t('resolv');
+  } else {
+    const nota=btn.closest('.div-card').querySelector('.div-nota').value;
+    divergResolved[key]={nota,time:new Date().toLocaleString('pt-BR')};
+    btn.closest('.div-card').querySelector('.div-status').textContent=t('resolvido');
+    btn.closest('.div-card').querySelector('.div-status').style.color='var(--ok)';
+    btn.textContent='↩ Desfazer';
+    showToast('Marcado como resolvido!','ok');
+  }
+}
+
+function copyDivergencias(){
+  const L=LANG[getLang()];
+  const divs=getDivergencias();
+  const ref=document.getElementById('procRef')?.value||'';
+  const exp=document.getElementById('procExp')?.value||'';
+  const date=new Date().toLocaleDateString('pt-BR');
+  let text=`*${L.relatorio}*
+${L.processo}: ${ref} | ${L.exportador}: ${exp} | ${L.data}: ${date}
+
+`;
+  if(!divs.length){ text+=L.semDiv; }
+  else {
+    text+=`*${L.divergencias}:*
+`;
+    divs.forEach((d,i)=>{
+      const resolved=divergResolved[`${d.grupo}-${d.campo}`];
+      text+=`
+${i+1}. *${d.campo}* (${d.grupo})
+   ${d.doc1_label}: ${d.doc1_valor||'—'}
+   ${d.doc2_label}: ${d.doc2_valor||'—'}
+`;
+      if(d.observacao) text+=`   ${L.obs}: ${d.observacao}
+`;
+      text+=`   ${resolved?L.resolvido+': '+(resolved.nota||''):L.pendente}
+`;
+    });
+  }
+  if(currentResult?.alertas?.length){ text+=`
+*${L.alertas}:*
+`; currentResult.alertas.forEach((a,i)=>{ text+=`${i+1}. ${a}
+`; }); }
+  navigator.clipboard.writeText(text).then(()=>showToast('Copiado!','ok')).catch(()=>{ prompt('Copie o texto:',text); });
+}
+
+function exportPDF(){
+  const L=LANG[getLang()];
+  const divs=getDivergencias();
+  const ref=document.getElementById('procRef')?.value||'';
+  const exp=document.getElementById('procExp')?.value||'';
+  const date=new Date().toLocaleDateString('pt-BR');
+  const rows=!divs.length
+    ?`<tr><td colspan="5" style="text-align:center;color:green;padding:20px">${L.semDiv}</td></tr>`
+    :divs.map((d,i)=>{
+      const resolved=divergResolved[`${d.grupo}-${d.campo}`];
+      return `<tr style="background:${i%2===0?'#fff':'#fafafa'}">
+        <td style="padding:10px 12px;border-bottom:1px solid #eee;font-weight:600">${d.campo}</td>
+        <td style="padding:10px 12px;border-bottom:1px solid #eee;color:#666;font-size:12px">${d.grupo}</td>
+        <td style="padding:10px 12px;border-bottom:1px solid #eee">${d.doc1_valor||'—'}<br><small style="color:#999">${d.doc1_label||''}</small></td>
+        <td style="padding:10px 12px;border-bottom:1px solid #eee;color:#e84040">${d.doc2_valor||'—'}<br><small style="color:#999">${d.doc2_label||''}</small></td>
+        <td style="padding:10px 12px;border-bottom:1px solid #eee;text-align:center">${resolved?'<span style="color:green">✅</span>':'<span style="color:orange">⚠️</span>'}</td>
+      </tr>`;
+    }).join('');
+  const alertRows=(currentResult?.alertas||[]).map(a=>`<li style="padding:6px 0;border-bottom:1px solid #fde;">${a}</li>`).join('');
+  const win=window.open('','_blank');
+  win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${L.relatorio}</title>
+  <style>body{font-family:Arial,sans-serif;margin:0}.header{background:#1a3a2a;color:#fff;padding:28px 40px}.header h1{margin:0;font-size:22px}.header p{margin:6px 0 0;font-size:13px;opacity:.7}.meta{display:flex;gap:24px;padding:20px 40px;background:#f4f1eb;border-bottom:2px solid #d4cfc4}.meta-item{font-size:13px}.meta-item strong{display:block;font-size:11px;color:#7a7267;text-transform:uppercase;margin-bottom:2px}.section{padding:24px 40px}.section h2{font-size:14px;text-transform:uppercase;letter-spacing:.15em;color:#7a7267;margin:0 0 16px;padding-bottom:8px;border-bottom:1px solid #d4cfc4}table{width:100%;border-collapse:collapse;font-size:13px}th{background:#1a3a2a;color:#fff;padding:10px 12px;text-align:left;font-size:11px;text-transform:uppercase}.alerts{background:#fff8f6;border:1px solid #f0c9be;border-left:4px solid #b5451b;border-radius:6px;padding:16px 20px}.alerts ul{margin:0;padding:0;list-style:none}.footer{padding:20px 40px;font-size:11px;color:#7a7267;border-top:1px solid #d4cfc4}@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}</style>
+  </head><body>
+  <div class="header"><h1>IMPAK — ${L.relatorio}</h1><p>${L.geradoEm} ${date}</p></div>
+  <div class="meta">
+    <div class="meta-item"><strong>${L.processo}</strong>${ref}</div>
+    <div class="meta-item"><strong>${L.exportador}</strong>${exp||'—'}</div>
+    <div class="meta-item"><strong>${L.data}</strong>${date}</div>
+    <div class="meta-item"><strong>${L.divergencias}</strong>${divs.length}</div>
+  </div>
+  <div class="section"><h2>${L.divergencias}</h2>
+    <table><thead><tr><th>${L.campo}</th><th>Grupo</th><th>${L.doc1}</th><th>${L.doc2}</th><th>${L.status}</th></tr></thead>
+    <tbody>${rows}</tbody></table>
+  </div>
+  ${alertRows?`<div class="section"><h2>${L.alertas}</h2><div class="alerts"><ul>${alertRows}</ul></div></div>`:''}
+  <div class="footer">IMPAK · ${L.geradoEm}: ${new Date().toLocaleString('pt-BR')}</div>
+  <script>window.onload=()=>setTimeout(()=>window.print(),500);<\/script>
+  </body></html>`);
+  win.document.close();
+}
+
+function printReport(){ exportPDF(); }
+
+// ─── MESSAGE GENERATOR ───────────────────────────────────────────────
+let currentMsgType = 'agent';
+
+const MSG_TEMPLATES = {
+  agent: {
+    pt: (ref, divs, alerts) => {
+      const date = new Date().toLocaleDateString('pt-BR');
+      let msg = `Prezado Agente de Cargas,
+
+Estamos verificando o draft do Bill of Lading referente ao processo *${ref}* e identificamos os seguintes pontos que precisam de correção antes da emissão final:
+
+`;
+      const blDivs = divs.filter(d => d.doc1_label==='BILL OF LADING' || d.doc2_label==='BILL OF LADING');
+      if(blDivs.length){
+        msg += `*CORREÇÕES NECESSÁRIAS NO BL:*
+
+`;
+        blDivs.forEach((d,i) => {
+          msg += `${i+1}. ${d.campo}
+`;
+          msg += `   • Consta no BL: ${d.doc1_label==='BILL OF LADING'?d.doc1_valor:d.doc2_valor||'N/A'}
+`;
+          msg += `   • Deve ser: ${d.doc1_label==='BILL OF LADING'?d.doc2_valor:d.doc1_valor||'N/A'}
+
+`;
+        });
+      } else {
+        const allDivs = divs.slice(0,5);
+        msg += `*PONTOS A VERIFICAR:*
+
+`;
+        allDivs.forEach((d,i) => {
+          msg += `${i+1}. ${d.campo}
+`;
+          msg += `   • Documento 1 (${d.doc1_label}): ${d.doc1_valor||'N/A'}
+`;
+          msg += `   • Documento 2 (${d.doc2_label}): ${d.doc2_valor||'N/A'}
+`;
+          if(d.observacao) msg += `   • Obs: ${d.observacao}
+`;
+          msg += `
+`;
+        });
+      }
+      if(alerts.length){
+        msg += `*ALERTAS ADICIONAIS:*
+`;
+        alerts.forEach((a,i) => { msg += `${i+1}. ${a}
+`; });
+        msg += `
+`;
+      }
+      msg += `Por favor, enviar o BL corrigido para nossa análise.
+
+Atenciosamente,
+IMPAK Comercial e Importadora Ltda
+${date}`;
+      return msg;
+    },
+    en: (ref, divs, alerts) => {
+      const date = new Date().toLocaleDateString('en-US');
+      let msg = `Dear Freight Agent,
+
+We are reviewing the Bill of Lading draft for process *${ref}* and identified the following corrections needed before final issuance:
+
+`;
+      const blDivs = divs.filter(d => d.doc1_label==='BILL OF LADING' || d.doc2_label==='BILL OF LADING');
+      const items = blDivs.length ? blDivs : divs.slice(0,5);
+      msg += `*CORRECTIONS REQUIRED:*
+
+`;
+      items.forEach((d,i) => {
+        msg += `${i+1}. ${d.campo}
+`;
+        msg += `   • Current: ${d.doc1_valor||'N/A'} (${d.doc1_label})
+`;
+        msg += `   • Should be: ${d.doc2_valor||'N/A'} (${d.doc2_label})
+
+`;
+      });
+      msg += `Please send the corrected BL for our review.
+
+Best regards,
+IMPAK Comercial e Importadora Ltda
+${date}`;
+      return msg;
+    },
+    es: (ref, divs, alerts) => {
+      const date = new Date().toLocaleDateString('es-ES');
+      let msg = `Estimado Agente de Carga,
+
+Estamos revisando el borrador del Bill of Lading para el proceso *${ref}* y hemos identificado las siguientes correcciones necesarias:
+
+`;
+      divs.slice(0,5).forEach((d,i) => {
+        msg += `${i+1}. ${d.campo}
+   • Actual: ${d.doc1_valor||'N/A'}
+   • Debe ser: ${d.doc2_valor||'N/A'}
+
+`;
+      });
+      msg += `Por favor, envíe el BL corregido para nuestra revisión.
+
+Atentamente,
+IMPAK Comercial e Importadora Ltda
+${date}`;
+      return msg;
+    }
+  },
+  supplier: {
+    pt: (ref, divs, alerts) => {
+      const date = new Date().toLocaleDateString('pt-BR');
+      let msg = `Prezado Fornecedor,
+
+Em relação ao processo *${ref}*, identificamos divergências nos documentos (Commercial Invoice / Packing List) que precisam ser corrigidas:
+
+`;
+      const supDivs = divs.filter(d => d.doc1_label==='COMMERCIAL INVOICE'||d.doc2_label==='COMMERCIAL INVOICE'||d.doc1_label==='PACKING LIST'||d.doc2_label==='PACKING LIST');
+      const items = supDivs.length ? supDivs : divs;
+      msg += `*CORREÇÕES NECESSÁRIAS:*
+
+`;
+      items.forEach((d,i) => {
+        msg += `${i+1}. ${d.campo}
+`;
+        msg += `   • ${d.doc1_label}: ${d.doc1_valor||'N/A'}
+`;
+        msg += `   • ${d.doc2_label}: ${d.doc2_valor||'N/A'}
+`;
+        if(d.observacao) msg += `   • Observação: ${d.observacao}
+`;
+        msg += `
+`;
+      });
+      msg += `Por favor, emitir documentos corrigidos com urgência.
+
+Atenciosamente,
+IMPAK Comercial e Importadora Ltda
+${date}`;
+      return msg;
+    },
+    en: (ref, divs, alerts) => {
+      const date = new Date().toLocaleDateString('en-US');
+      let msg = `Dear Supplier,
+
+Regarding process *${ref}*, we have identified discrepancies in the shipping documents (Commercial Invoice / Packing List) that require correction:
+
+`;
+      const supDivs = divs.filter(d => d.doc1_label==='COMMERCIAL INVOICE'||d.doc2_label==='COMMERCIAL INVOICE'||d.doc1_label==='PACKING LIST'||d.doc2_label==='PACKING LIST');
+      const items = supDivs.length ? supDivs : divs;
+      msg += `*CORRECTIONS REQUIRED:*
+
+`;
+      items.forEach((d,i) => {
+        msg += `${i+1}. ${d.campo}
+`;
+        msg += `   • ${d.doc1_label}: ${d.doc1_valor||'N/A'}
+`;
+        msg += `   • ${d.doc2_label}: ${d.doc2_valor||'N/A'}
+`;
+        if(d.observacao) msg += `   • Note: ${d.observacao}
+`;
+        msg += `
+`;
+      });
+      if(alerts.length){ msg += `*ADDITIONAL ALERTS:*
+`; alerts.forEach((a,i)=>{ msg+=`${i+1}. ${a}
+`; }); msg+=`
+`; }
+      msg += `Please issue corrected documents as soon as possible.
+
+Best regards,
+IMPAK Comercial e Importadora Ltda
+${date}`;
+      return msg;
+    },
+    es: (ref, divs, alerts) => {
+      const date = new Date().toLocaleDateString('es-ES');
+      let msg = `Estimado Proveedor,
+
+En relación al proceso *${ref}*, hemos identificado discrepancias en los documentos:
+
+`;
+      divs.forEach((d,i) => { msg += `${i+1}. ${d.campo}
+   • ${d.doc1_label}: ${d.doc1_valor||'N/A'}
+   • ${d.doc2_label}: ${d.doc2_valor||'N/A'}
+
+`; });
+      msg += `Por favor, emita documentos corregidos a la brevedad.
+
+Atentamente,
+IMPAK Comercial e Importadora Ltda
+${date}`;
+      return msg;
+    }
+  },
+  all: {
+    pt: (ref, divs, alerts) => {
+      const date = new Date().toLocaleDateString('pt-BR');
+      let msg = `*RELATÓRIO DE CONFERÊNCIA DOCUMENTAL*
+Processo: ${ref} | Data: ${date}
+
+`;
+      msg += `📊 RESUMO: ${divs.length} divergência(s) | ${alerts.length} alerta(s)
+
+`;
+      if(divs.length){ msg += `*DIVERGÊNCIAS:*
+
+`; divs.forEach((d,i)=>{ var obs=d.observacao?('   > '+d.observacao+'\n'):''; msg+=(i+1)+'. '+d.campo+' ('+d.grupo+')\n   '+d.doc1_label+': '+(d.doc1_valor||'N/A')+'\n   '+d.doc2_label+': '+(d.doc2_valor||'N/A')+'\n'+obs+'\n'; }); }
+      if(alerts.length){ msg += `*ALERTAS:*
+`; alerts.forEach((a,i)=>{ msg+=`${i+1}. ${a}
+`; }); }
+      return msg;
+    },
+    en: (ref, divs, alerts) => {
+      const date = new Date().toLocaleDateString('en-US');
+      let msg = `*DOCUMENTARY REVIEW REPORT*
+Process: ${ref} | Date: ${date}
+
+`;
+      msg += `📊 SUMMARY: ${divs.length} divergence(s) | ${alerts.length} alert(s)
+
+`;
+      if(divs.length){ msg += `*DIVERGENCES:*
+
+`; divs.forEach((d,i)=>{ var obs=d.observacao?('   > '+d.observacao+'\n'):''; msg+=(i+1)+'. '+d.campo+' ('+d.grupo+')\n   '+d.doc1_label+': '+(d.doc1_valor||'N/A')+'\n   '+d.doc2_label+': '+(d.doc2_valor||'N/A')+'\n'+obs+'\n'; }); }
+      if(alerts.length){ msg += `*ALERTS:*
+`; alerts.forEach((a,i)=>{ msg+=`${i+1}. ${a}
+`; }); }
+      return msg;
+    },
+    es: (ref, divs, alerts) => {
+      const date = new Date().toLocaleDateString('es-ES');
+      let msg = `*INFORME DE REVISIÓN DOCUMENTAL*
+Proceso: ${ref} | Fecha: ${date}
+
+`;
+      msg += `📊 RESUMEN: ${divs.length} divergencia(s) | ${alerts.length} alerta(s)
+
+`;
+      if(divs.length){ msg += `*DIVERGENCIAS:*
+
+`; divs.forEach((d,i)=>{ msg+=`${i+1}. ${d.campo} (${d.grupo})
+   ${d.doc1_label}: ${d.doc1_valor||'N/A'}
+   ${d.doc2_label}: ${d.doc2_valor||'N/A'}
+
+`; }); }
+      if(alerts.length){ msg += `*ALERTAS:*
+`; alerts.forEach((a,i)=>{ msg+=`${i+1}. ${a}
+`; }); }
+      return msg;
+    }
+  }
+};
+
+function openMsgModal(type, lang){
+  currentMsgType = type;
+  const titles = { agent:'🚢 Agente de Cargas — Correção do BL', supplier:'🏭 Fornecedor — Invoice & Packing List', all:'📋 Relatório Completo' };
+  const subs = { agent:'Mensagem para solicitar correções no Bill of Lading', supplier:'Mensagem para solicitar correções na Invoice e Packing List', all:'Relatório com todas as divergências' };
+  document.getElementById('msgModalTitle').textContent = titles[type];
+  document.getElementById('msgModalSub').textContent = subs[type];
+  document.getElementById('msgLangSelect').value = lang;
+  updateMsgContent();
+  document.getElementById('msgModalBg').style.display = 'flex';
+}
+
+function updateMsgContent(){
+  const lang = document.getElementById('msgLangSelect').value;
+  const ref = document.getElementById('procRef')?.value || 'N/A';
+  const divs = getDivergencias();
+  const alerts = currentResult?.alertas || [];
+  const fn = MSG_TEMPLATES[currentMsgType]?.[lang];
+  if(fn) document.getElementById('msgContent').value = fn(ref, divs, alerts);
+}
+
+function copyMsg(){
+  const txt = document.getElementById('msgContent').value;
+  navigator.clipboard.writeText(txt).then(()=>showToast('Copiado! Cole no WhatsApp ou e-mail.','ok')).catch(()=>{ document.getElementById('msgContent').select(); document.execCommand('copy'); showToast('Copiado!','ok'); });
+}
+
+function exportMsgPDF(){
+  const txt = document.getElementById('msgContent').value;
+  const ref = document.getElementById('procRef')?.value || '';
+  const win = window.open('','_blank');
+  win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Mensagem - ${ref}</title>
+  <style>body{font-family:Arial,sans-serif;max-width:680px;margin:40px auto;color:#1c1a16;line-height:1.7;}
+  .header{background:#1a3a2a;color:#fff;padding:20px 28px;border-radius:8px;margin-bottom:24px;}
+  .header h1{margin:0;font-size:18px;} .header p{margin:4px 0 0;font-size:12px;opacity:.7;}
+  pre{white-space:pre-wrap;font-family:Arial,sans-serif;font-size:13px;background:#f4f1eb;padding:20px;border-radius:6px;border-left:4px solid #1a3a2a;}
+  @media print{body{margin:20px;}}</style></head><body>
+  <div class="header"><h1>IMPAK — Comunicação de Processo</h1><p>Referência: ${ref} · ${new Date().toLocaleDateString('pt-BR')}</p></div>
+  <pre>${txt.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</pre>
+  <script>window.onload=()=>setTimeout(()=>window.print(),400);<\/script>
+  </body></html>`);
+  win.document.close();
+}
+
+function closeMsgModal(e){
+  if(e.target===document.getElementById('msgModalBg')) document.getElementById('msgModalBg').style.display='none';
+}
 
 // ─── TOAST ───────────────────────────────────────────────────────────
 function showToast(msg,type='ok'){
