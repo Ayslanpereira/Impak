@@ -8,22 +8,22 @@
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=DM+Mono:wght@300;400;500&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,300&display=swap" rel="stylesheet">
 <style>
 :root {
-  --bg: #0c0f0a;
-  --bg2: #111408;
-  --surface: #161a10;
-  --surface2: #1d2214;
-  --border: #252d18;
-  --border2: #2f3a1e;
-  --accent: #a8d448;
-  --accent2: #7aaa1e;
-  --accent-dim: rgba(168,212,72,0.12);
-  --warn: #e8a020;
-  --danger: #e84040;
-  --ok: #40c878;
-  --text: #d4dfc0;
-  --text-dim: #6a7a50;
-  --text-bright: #ecf5d4;
-  --text-mid: #9aad78;
+  --bg: #f0f4f8;
+  --bg2: #e8edf2;
+  --surface: #ffffff;
+  --surface2: #f5f8fb;
+  --border: #dce3ea;
+  --border2: #c5d0db;
+  --accent: #0a2d5e;
+  --accent2: #1a4a8a;
+  --accent-dim: rgba(10,45,94,0.08);
+  --warn: #d97706;
+  --danger: #dc2626;
+  --ok: #16a34a;
+  --text: #1e2d3d;
+  --text-dim: #64748b;
+  --text-bright: #0a1929;
+  --text-mid: #334155;
 }
 *{box-sizing:border-box;margin:0;padding:0;}
 html{scroll-behavior:smooth;}
@@ -39,6 +39,7 @@ body{
 ::-webkit-scrollbar{width:4px;}
 ::-webkit-scrollbar-track{background:var(--bg);}
 ::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px;}
+body{box-shadow:inset 0 0 0 1px transparent;}
 
 /* Layout */
 .shell{display:flex;min-height:100vh;}
@@ -46,7 +47,7 @@ body{
 /* Sidebar */
 .sidebar{
   width:220px;
-  background:var(--bg2);
+  background:var(--surface);
   border-right:1px solid var(--border);
   display:flex;
   flex-direction:column;
@@ -55,27 +56,28 @@ body{
   z-index:100;
 }
 .sidebar-logo{
-  padding:28px 20px 20px;
+  padding:20px 20px 16px;
   border-bottom:1px solid var(--border);
+  background:var(--accent);
 }
 .sidebar-logo .logo-tag{
   font-family:'DM Mono',monospace;
   font-size:9px;
-  color:var(--text-dim);
+  color:rgba(255,255,255,0.5);
   letter-spacing:0.2em;
   text-transform:uppercase;
-  margin-bottom:4px;
+  margin-bottom:6px;
 }
 .sidebar-logo .logo-name{
   font-family:'Syne',sans-serif;
   font-size:22px;
   font-weight:800;
-  color:var(--accent);
+  color:#ffffff;
   letter-spacing:-0.02em;
 }
 .sidebar-logo .logo-sub{
   font-size:11px;
-  color:var(--text-dim);
+  color:rgba(255,255,255,0.6);
   margin-top:2px;
 }
 .nav{padding:16px 0;flex:1;}
@@ -94,6 +96,7 @@ body{
   color:var(--accent);
   border-left-color:var(--accent);
   background:var(--accent-dim);
+  font-weight:600;
 }
 .nav-item .nav-icon{font-size:15px;width:20px;text-align:center;}
 .nav-item .nav-label{font-weight:500;}
@@ -101,6 +104,7 @@ body{
 .sidebar-api{
   padding:16px 20px;
   border-top:1px solid var(--border);
+  background:var(--surface2);
 }
 .api-label{
   font-family:'DM Mono',monospace;
@@ -151,7 +155,7 @@ body{
 }
 .page-title{
   font-family:'Syne',sans-serif;
-  font-size:28px;
+  font-size:26px;
   font-weight:700;
   color:var(--text-bright);
   letter-spacing:-0.02em;
@@ -178,6 +182,7 @@ body{
   border:1px solid var(--border);
   border-radius:8px;
   padding:20px 24px;
+  box-shadow:0 1px 4px rgba(0,0,0,0.06);
 }
 
 /* Dashboard stats */
@@ -194,11 +199,13 @@ body{
   padding:20px;
   position:relative;
   overflow:hidden;
+  box-shadow:0 1px 4px rgba(0,0,0,0.06);
 }
 .stat-card::before{
   content:'';
-  position:absolute;top:0;left:0;right:0;height:2px;
+  position:absolute;top:0;left:0;right:0;height:3px;
   background:var(--accent);
+  border-radius:8px 8px 0 0;
 }
 .stat-val{
   font-family:'Syne',sans-serif;
@@ -224,7 +231,7 @@ body{
   cursor:pointer;
   transition:all 0.15s;
 }
-.process-row:hover{border-color:var(--border2);background:var(--surface2);}
+.process-row:hover{border-color:var(--accent);background:var(--surface2);box-shadow:0 2px 8px rgba(10,45,94,0.08);}
 .proc-ref{
   font-family:'DM Mono',monospace;
   font-size:12px;
@@ -261,7 +268,7 @@ body{
   border:none;
   transition:all 0.15s;
 }
-.btn-primary{background:var(--accent);color:#0c0f0a;}
+.btn-primary{background:var(--accent);color:#ffffff;}
 .btn-primary:hover{background:var(--accent2);}
 .btn-primary:disabled{opacity:0.3;cursor:not-allowed;}
 .btn-ghost{background:transparent;color:var(--text-dim);border:1px solid var(--border2);}
@@ -285,6 +292,7 @@ body{
   border-color:var(--accent);
   background:var(--accent-dim);
 }
+.drop-zone{box-shadow:0 1px 3px rgba(0,0,0,0.05);}
 .drop-zone input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%;}
 .dz-icon{font-size:36px;margin-bottom:12px;display:block;}
 .dz-title{font-size:15px;font-weight:600;color:var(--text-bright);margin-bottom:6px;}
@@ -353,7 +361,7 @@ body{
 }
 .cg-head{
   display:flex;align-items:center;justify-content:space-between;
-  padding:12px 18px;background:var(--surface2);
+  padding:12px 18px;background:var(--bg2);
   border-bottom:1px solid var(--border);
 }
 .cg-title{
@@ -410,7 +418,7 @@ body{
 
 /* Modal */
 .modal-bg{
-  position:fixed;inset:0;background:rgba(0,0,0,0.7);
+  position:fixed;inset:0;background:rgba(10,45,94,0.5);
   z-index:200;display:none;align-items:center;justify-content:center;
   backdrop-filter:blur(4px);
 }
@@ -514,9 +522,13 @@ textarea.field-input{resize:vertical;min-height:80px;}
 <!-- Sidebar -->
 <aside class="sidebar">
   <div class="sidebar-logo">
-    <div class="logo-tag">Sistema de Gestão</div>
-    <div class="logo-name">IMPAK</div>
-    <div class="logo-sub">Importação de Pneus</div>
+    <img src="https://impak.com.br/wp-content/uploads/2025/01/Design-sem-nome-6.webp"
+         alt="IMPAK" onerror="this.style.display='none';document.getElementById('logoFallback').style.display='block';"
+         style="width:140px;height:auto;margin-bottom:6px;display:block;">
+    <div id="logoFallback" style="display:none;">
+      <div class="logo-name">IMPAK</div>
+    </div>
+    <div class="logo-sub">Sistema de Gestão · Importação</div>
   </div>
   <nav class="nav">
     <div class="nav-item active" onclick="showPage('dashboard')">
@@ -908,7 +920,7 @@ async function runAnalysis(){
     setStep(2);
 
     const docList=[...new Set(Object.values(uploadedFiles).map(f=>DOC_LBL[f.type]))].join(', ');
-    const prompt = 'Retorne APENAS JSON puro sem markdown sem texto extra. Voce e especialista em conferencia documental de importacao de pneus. Analise os documentos: ' + docList + '. JSON obrigatorio: {"resumo":{"campos_ok":0,"divergencias":0,"alertas":0},"grupos":[{"titulo":"Identificacao","campos":[{"campo":"campo","doc1_label":"doc","doc1_valor":"val","doc2_label":"doc","doc2_valor":"val","status":"OK","observacao":null}]}],"alertas":[],"documentos":[{"tipo":"tipo","dados":{"campo":"valor"}}]}. Grupos: Identificacao, Partes Envolvidas, Mercadoria, Valores, Logistica. Campos a verificar: numero invoice/BL/proforma, importador nome CNPJ endereco, exportador, produtos tamanho marca padrao, quantidades totais, pesos bruto liquido, CBM, precos unitarios e totais USD, incoterm, porto origem destino, navio, containers, datas, condicoes pagamento. Status OK se igual DIVERGENCIA se diferente AUSENTE se faltando.';
+    const prompt = 'Retorne APENAS JSON puro sem markdown sem texto extra. Voce e especialista em conferencia documental de importacao de pneus. Analise os documentos: ' + docList + '. JSON obrigatorio com EXATAMENTE esta estrutura: {"resumo":{"campos_ok":0,"divergencias":0,"alertas":0},"grupos":[{"titulo":"Identificacao","campos":[{"campo":"campo","doc1_label":"doc","doc1_valor":"val","doc2_label":"doc","doc2_valor":"val","status":"OK","observacao":null}]}],"alertas":["texto do alerta aqui como string simples"],"documentos":[{"tipo":"tipo","dados":{"campo":"valor"}}]}. IMPORTANTE: o array alertas deve conter APENAS strings simples de texto, NUNCA objetos JSON. Exemplo correto: "alertas":["Divergencia encontrada no shipper"]. Exemplo ERRADO: "alertas":[{"tipo":"CRITICO","titulo":"..."}]. Grupos: Identificacao, Partes Envolvidas, Mercadoria, Valores, Logistica. Campos: numero invoice/BL/proforma, importador nome CNPJ endereco, exportador, produtos tamanho marca padrao, quantidades totais, pesos bruto liquido, CBM, precos unitarios e totais USD, incoterm, porto origem destino, navio, containers, datas, condicoes pagamento. Status OK se igual DIVERGENCIA se diferente AUSENTE se faltando.';
     content.push({type:'text',text:prompt});
 
     setStep(3);
@@ -958,7 +970,13 @@ async function runAnalysis(){
       grupos: result.grupos,
       alertas: (result.alertas||[]).map(a=>{
         if(typeof a==='string') return a;
-        if(typeof a==='object') return a.descricao||a.titulo||a.texto||a.message||JSON.stringify(a);
+        if(typeof a==='object'&&a!==null){
+          // Extract meaningful text from object
+          return a.descricao||a.titulo||a.texto||a.message||a.observacao||
+                 (a.titulo&&a.descricao?(a.titulo+': '+a.descricao):null)||
+                 Object.values(a).filter(v=>typeof v==='string').join(' - ')||
+                 JSON.stringify(a);
+        }
         return String(a);
       }),
       documentos: result.documentos,
