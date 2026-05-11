@@ -928,7 +928,7 @@ async function runAnalysis(){
     const resp = await fetch('https://api.anthropic.com/v1/messages',{
       method:'POST',
       headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
-      body:JSON.stringify({model:'claude-sonnet-4-5',max_tokens:8000,messages:[{role:'user',content}]})
+      body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:8000,messages:[{role:'user',content}]})
     });
 
     if(!resp.ok){
@@ -1281,54 +1281,99 @@ function renderDivPanel(){
   if(!panel) return;
   const L=LANG[getLang()];
   const divs=getDivergencias();
-  if(!divs.length){ panel.innerHTML=`<div style="padding:24px;text-align:center;color:var(--ok);font-size:14px;">✅ ${L.semDiv}</div>`; return; }
-  panel.innerHTML=divs.map((d,i)=>{
-    const key=`${d.grupo}-${d.campo}`;
+  if(!divs.length){
+    panel.innerHTML='<div style="padding:24px;text-align:center;color:var(--ok);font-size:14px;">Nenhuma divergencia encontrada.</div>';
+    return;
+  }
+  let html='';
+  divs.forEach(function(d,i){
+    const key=d.grupo+'-'+d.campo;
     const resolved=divergResolved[key];
-    return `<div class="div-card" style="background:var(--surface2);border:1px solid var(--border);border-left:3px solid ${d.status==='DIVERGENCIA'?'var(--danger)':'var(--warn)'};border-radius:8px;padding:16px 18px;margin-bottom:10px;">
-      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;">
-        <div style="flex:1;">
-          <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
-            <span style="font-family:monospace;font-size:9px;color:var(--text-dim);text-transform:uppercase;">${d.grupo}</span>
-            <span class="div-status" style="font-size:10px;color:${resolved?'var(--ok)':'var(--warn)'}">${resolved?L.resolvido:L.pendente}</span>
-          </div>
-          <div style="font-size:14px;font-weight:600;color:var(--text-bright);margin-bottom:10px;">${d.campo}</div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
-            <div style="background:var(--surface);border:1px solid var(--border);border-radius:5px;padding:8px 12px;">
-              <div style="font-size:9px;color:var(--text-dim);margin-bottom:3px;">${d.doc1_label||L.doc1}</div>
-              <div style="font-size:13px;color:var(--text);">${d.doc1_valor||'—'}</div>
-            </div>
-            <div style="background:var(--surface);border:1px solid rgba(232,64,64,0.2);border-radius:5px;padding:8px 12px;">
-              <div style="font-size:9px;color:var(--text-dim);margin-bottom:3px;">${d.doc2_label||L.doc2}</div>
-              <div style="font-size:13px;color:var(--danger);">${d.doc2_valor||'—'}</div>
-            </div>
-          </div>
-          ${d.observacao?`<div style="font-size:12px;color:var(--warn);font-style:italic;margin-bottom:8px;">↳ ${d.observacao}</div>`:''}
-          <input class="div-nota field-input" placeholder="${L.nota}" value="${resolved?.nota||''}" style="font-size:12px;padding:7px 10px;">
-        </div>
-        <button onclick="toggleResolved('${key}',this)" style="background:${resolved?'rgba(64,200,120,0.1)':'rgba(168,212,72,0.1)'};border:1px solid ${resolved?'var(--ok)':'var(--accent)'};color:${resolved?'var(--ok)':'var(--accent)'};border-radius:6px;padding:8px 14px;font-family:monospace;font-size:10px;cursor:pointer;white-space:nowrap;">
-          ${resolved?'↩ Desfazer':L.resolv}
-        </button>
-      </div>
-    </div>`;
-  }).join('');
+    const isDiv=d.status==='DIVERGENCIA';
+    const ac=isDiv?'#dc2626':'#d97706';
+    const bg=isDiv?'rgba(220,38,38,0.05)':'rgba(217,119,6,0.05)';
+    const doc1Val=(d.doc1_valor||'Nao informado').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const doc2Val=(d.doc2_valor||'Nao encontrado').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const resolveStyle=resolved
+      ?'border:1px solid #16a34a;background:rgba(22,163,74,0.1);color:#16a34a;'
+      :'border:1px solid #c5d0db;background:transparent;color:#64748b;';
+    const statusText=resolved?'&#10003; Resolvido':'Pendente';
+    const statusColor=resolved?'#16a34a':'#64748b';
+    const btnBase='padding:6px 12px;border-radius:4px;font-size:10px;font-family:monospace;font-weight:700;cursor:pointer;';
+
+    html+='<div class="div-card" data-idx="'+i+'" style="background:#fff;border:1px solid '+ac+'44;border-left:4px solid '+ac+';border-radius:8px;margin-bottom:14px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.07);">';
+    html+='<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 16px;background:'+bg+';border-bottom:1px solid '+ac+'33;">';
+    html+='<div style="display:flex;align-items:center;gap:8px;">';
+    html+='<span style="font-size:10px;font-weight:700;padding:3px 8px;border-radius:3px;background:'+bg+';color:'+ac+';font-family:monospace;">'+(isDiv?'DIVERGENCIA':'AUSENTE')+'</span>';
+    html+='<span style="font-size:10px;color:#64748b;font-family:monospace;text-transform:uppercase;">'+d.grupo+'</span>';
+    html+='</div>';
+    html+='<span class="div-status-'+i+'" style="font-size:11px;font-weight:600;color:'+statusColor+';">'+statusText+'</span>';
+    html+='</div>';
+    html+='<div style="padding:14px 16px;">';
+    html+='<div style="font-size:15px;font-weight:700;color:#0a1929;margin-bottom:12px;">'+d.campo+'</div>';
+    html+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">';
+    html+='<div style="border:1px solid #dce3ea;border-radius:6px;overflow:hidden;">';
+    html+='<div style="background:#e8edf2;padding:6px 10px;font-size:9px;font-weight:700;color:#64748b;font-family:monospace;text-transform:uppercase;">'+(d.doc1_label||'DOC 1')+'</div>';
+    html+='<div style="padding:10px;font-size:13px;color:#1e2d3d;line-height:1.4;">'+doc1Val+'</div>';
+    html+='</div>';
+    html+='<div style="border:2px solid '+ac+';border-radius:6px;overflow:hidden;">';
+    html+='<div style="background:'+bg+';padding:6px 10px;display:flex;align-items:center;justify-content:space-between;">';
+    html+='<span style="font-size:9px;font-weight:700;color:'+ac+';font-family:monospace;text-transform:uppercase;">'+(d.doc2_label||'DOC 2')+'</span>';
+    html+='<span style="font-size:10px;color:'+ac+';">DIFERE</span>';
+    html+='</div>';
+    html+='<div style="padding:10px;font-size:13px;font-weight:600;color:'+ac+';line-height:1.4;background:'+bg+';">'+doc2Val+'</div>';
+    html+='</div>';
+    html+='</div>';
+    if(d.observacao){
+      const obs=d.observacao.replace(/</g,'&lt;').replace(/>/g,'&gt;');
+      html+='<div style="margin-bottom:10px;padding:8px 10px;background:rgba(217,119,6,0.06);border-radius:4px;font-size:12px;color:#d97706;font-style:italic;border-left:3px solid #d97706;">'+obs+'</div>';
+    }
+    const notaVal=(resolved&&resolved.nota)?resolved.nota.replace(/"/g,'&quot;'):'';
+    html+='<input class="div-nota-'+i+' field-input" placeholder="'+L.nota+'" value="'+notaVal+'" style="font-size:12px;padding:7px 10px;width:100%;">';
+    html+='</div>';
+    html+='<div style="display:flex;gap:6px;padding:10px 16px;background:#f5f8fb;border-top:1px solid #dce3ea;flex-wrap:wrap;">';
+    html+='<button data-action="resolve" data-idx="'+i+'" style="'+btnBase+resolveStyle+'">'+L.resolv+'</button>';
+    html+='<button data-action="copyPT" data-idx="'+i+'" style="'+btnBase+'border:1px solid #c5d0db;background:transparent;color:#64748b;">Copiar PT</button>';
+    html+='<button data-action="copyEN" data-idx="'+i+'" style="'+btnBase+'border:1px solid #c5d0db;background:transparent;color:#64748b;">Copy EN</button>';
+    html+='<button data-action="email" data-idx="'+i+'" style="'+btnBase+'border:1px solid #c5d0db;background:transparent;color:#64748b;">E-mail</button>';
+    html+='</div>';
+    html+='</div>';
+  });
+  panel.innerHTML=html;
+
+  panel.onclick=function(e){
+    const btn=e.target.closest('[data-action]');
+    if(!btn) return;
+    const action=btn.getAttribute('data-action');
+    const i=parseInt(btn.getAttribute('data-idx'));
+    const divs2=getDivergencias();
+    const d=divs2[i];
+    if(!d) return;
+    const key=d.grupo+'-'+d.campo;
+    if(action==='resolve'){
+      const nota=panel.querySelector('.div-nota-'+i).value;
+      if(divergResolved[key]){
+        delete divergResolved[key];
+        const s=panel.querySelector('.div-status-'+i);
+        if(s){s.textContent='Pendente';s.style.color='#64748b';}
+        btn.textContent=LANG[getLang()].resolv;
+        btn.style.cssText=btn.style.cssText.replace(/border:[^;]+;/,'border:1px solid #c5d0db;');
+        btn.style.color='#64748b';btn.style.background='transparent';
+      } else {
+        divergResolved[key]={nota:nota,time:new Date().toLocaleString('pt-BR')};
+        const s=panel.querySelector('.div-status-'+i);
+        if(s){s.innerHTML='&#10003; Resolvido';s.style.color='#16a34a';}
+        btn.textContent='Desfazer';
+        btn.style.border='1px solid #16a34a';
+        btn.style.color='#16a34a';btn.style.background='rgba(22,163,74,0.1)';
+        showToast('Marcado como resolvido!','ok');
+      }
+    } else if(action==='copyPT'){ copyOneDivPT(i);
+    } else if(action==='copyEN'){ copyOneDivEN(i);
+    } else if(action==='email'){ emailOneDiv(i); }
+  };
 }
 
-function toggleResolved(key,btn){
-  if(divergResolved[key]){
-    delete divergResolved[key];
-    btn.closest('.div-card').querySelector('.div-status').textContent=t('pendente');
-    btn.closest('.div-card').querySelector('.div-status').style.color='var(--warn)';
-    btn.textContent=t('resolv');
-  } else {
-    const nota=btn.closest('.div-card').querySelector('.div-nota').value;
-    divergResolved[key]={nota,time:new Date().toLocaleString('pt-BR')};
-    btn.closest('.div-card').querySelector('.div-status').textContent=t('resolvido');
-    btn.closest('.div-card').querySelector('.div-status').style.color='var(--ok)';
-    btn.textContent='↩ Desfazer';
-    showToast('Marcado como resolvido!','ok');
-  }
-}
 
 function copyDivergencias(){
   const L=LANG[getLang()];
@@ -1706,6 +1751,49 @@ function exportMsgPDF(){
 
 function closeMsgModal(e){
   if(e.target===document.getElementById('msgModalBg')) document.getElementById('msgModalBg').style.display='none';
+}
+
+// ─── PER-DIVERGENCE ACTIONS ──────────────────────────────────────────
+function getOneDivText(i, lang){
+  const divs = getDivergencias();
+  const d = divs[i];
+  if(!d) return '';
+  const ref = document.getElementById('procRef')?.value||'';
+  const date = new Date().toLocaleDateString('pt-BR');
+  if(lang==='en'){
+    return 'Documentary Discrepancy Notice\nProcess: '+ref+' | Date: '+date+'\n\n'
+      +'Field: '+d.campo+'\nGroup: '+d.grupo+'\n\n'
+      +''+d.doc1_label+': '+(d.doc1_valor||'N/A')+'\n'
+      +''+d.doc2_label+': '+(d.doc2_valor||'N/A')+'\n'
+      +(d.observacao?'Note: '+d.observacao+'\n':'')
+      +'\nPlease correct and reissue the document as soon as possible.\n\nBest regards,\nIMPAK Comercial e Importadora Ltda';
+  }
+  return 'Notificação de Divergência Documental\nProcesso: '+ref+' | Data: '+date+'\n\n'
+    +'Campo: '+d.campo+'\nGrupo: '+d.grupo+'\n\n'
+    +''+d.doc1_label+': '+(d.doc1_valor||'N/A')+'\n'
+    +''+d.doc2_label+': '+(d.doc2_valor||'N/A')+'\n'
+    +(d.observacao?'Observação: '+d.observacao+'\n':'')
+    +'\nPor favor, corrigir e reemitir o documento com urgência.\n\nAtenciosamente,\nIMPAK Comercial e Importadora Ltda';
+}
+
+function copyOneDivPT(i){
+  const txt = getOneDivText(i,'pt');
+  navigator.clipboard.writeText(txt).then(()=>showToast('Copiado em Português!','ok')).catch(()=>{ prompt('Copie:',txt); });
+}
+
+function copyOneDivEN(i){
+  const txt = getOneDivText(i,'en');
+  navigator.clipboard.writeText(txt).then(()=>showToast('Copied in English!','ok')).catch(()=>{ prompt('Copy:',txt); });
+}
+
+function emailOneDiv(i){
+  const divs = getDivergencias();
+  const d = divs[i];
+  if(!d) return;
+  const ref = document.getElementById('procRef')?.value||'';
+  const subject = encodeURIComponent('Divergência Documental - Processo '+ref+' - '+d.campo);
+  const body = encodeURIComponent(getOneDivText(i,'pt')+'\n\n---\n\n'+getOneDivText(i,'en'));
+  window.open('mailto:?subject='+subject+'&body='+body);
 }
 
 // ─── TOAST ───────────────────────────────────────────────────────────
