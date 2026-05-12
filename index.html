@@ -765,22 +765,25 @@ const DOC_PT = {invoice:'Commercial Invoice (CI)',packing:'Packing List (PL)',bl
 
 function guessType(name){
   var b=name.toLowerCase().replace(/\.[a-z]{2,4}$/,'');
+  // separator = _, -, space, (, ), start or end
+  var sep='(_|^|-| |\\(|\\))';
+  var re=function(pat){ return new RegExp(pat).test(b); };
   // BL
-  if(/(_|^|-)bl(_|-|$)/.test(b)||/(_|^|-)hbl(_|-|$)/.test(b)||/(_|^|-)mbl(_|-|$)/.test(b)) return 'bl';
-  if(b.includes('lading')||b.includes('bill_of')) return 'bl';
-  // PI - must come before CI/invoice
-  if(/(_|^|-)pi(_|-|$)/.test(b)) return 'proforma';
-  if(b.includes('proforma')||b.includes('pro_forma')||b.includes('sales_contract')||b.includes('sales contract')) return 'proforma';
-  // CI
-  if(/(_|^|-)ci(_|-|$)/.test(b)) return 'invoice';
-  if(b.includes('commercial_invoice')||b.includes('commercial invoice')) return 'invoice';
-  if(/(_|^|-)invoice(_|-|$)/.test(b)) return 'invoice';
+  if(re(sep+'(bl|hbl|mbl)'+sep)||re(sep+'(bl|hbl|mbl)$')) return 'bl';
+  if(b.includes('lading')||b.includes('bill of lading')) return 'bl';
+  // PI - before CI
+  if(re(sep+'pi'+sep)||re(sep+'pi$')||re('^pi'+sep)) return 'proforma';
+  if(b.includes('proforma')||b.includes('pro_forma')||b.includes('sales contract')||b.includes('sales_contract')) return 'proforma';
+  // CI - also handle typo Cl (capital I vs lowercase L)
+  if(re(sep+'(ci|cl)'+sep)||re(sep+'(ci|cl)$')||re('^(ci|cl)'+sep)) return 'invoice';
+  if(b.includes('commercial invoice')||b.includes('commercial_invoice')) return 'invoice';
+  if(re(sep+'invoice'+sep)||re(sep+'invoice$')) return 'invoice';
   // PL
-  if(/(_|^|-)pl(_|-|$)/.test(b)) return 'packing';
-  if(b.includes('packing_list')||b.includes('packing list')||b.includes('packing')) return 'packing';
-  // CE Mercante
-  if(b.includes('ce_mercante')||b.includes('cemercante')||b.includes('ce-mercante')) return 'ce';
-  if(/(_|^|-)ce(_|-|$)/.test(b)&&!b.includes('invoice')&&!b.includes('price')) return 'ce';
+  if(re(sep+'pl'+sep)||re(sep+'pl$')||re('^pl'+sep)) return 'packing';
+  if(b.includes('packing list')||b.includes('packing_list')||b.includes('packing')) return 'packing';
+  // CE
+  if(b.includes('ce_mercante')||b.includes('cemercante')||b.includes('ce-mercante')||b.includes('ce mercante')) return 'ce';
+  if((re(sep+'ce'+sep)||re(sep+'ce$'))&&!b.includes('invoice')&&!b.includes('price')) return 'ce';
   // Fallback
   if(b.includes('invoice')) return 'invoice';
   return 'outros';
@@ -884,14 +887,58 @@ function addFiles(list){
 }
 function removeFile(name){ delete uploadedFiles[name]; renderChips(); checkReady(); }
 function renderChips(){
-  const c = document.getElementById('fileChips');
-  c.innerHTML = Object.entries(uploadedFiles).map(([n,{type}])=>`
-    <div class="chip">
-      <span class="chip-icon">${DOC_ICON[type]}</span>
-      <span class="chip-name">${n}</span>
-      <span class="chip-type">${DOC_PT[type]}</span>
-      <button class="chip-rm" onclick="removeFile('${n.replace(/'/g,"\\'")}')">✕</button>
-    </div>`).join('');
+  var c=document.getElementById('fileChips');
+  var entries=Object.entries(uploadedFiles);
+  if(!entries.length){c.innerHTML='';return;}
+  var html='';
+  entries.forEach(function(entry){
+    var n=entry[0];
+    var type=entry[1].type;
+    var isOther=type==='outros';
+    var short=n.length>45?n.slice(0,43)+'...':n;
+    var opts=[
+      ['invoice','CI - Commercial Invoice'],
+      ['packing','PL - Packing List'],
+      ['bl','BL - Bill of Lading'],
+      ['proforma','PI - Proforma Invoice'],
+      ['ce','CE - CE Mercante'],
+      ['outros','Outro Documento']
+    ].map(function(o){
+      return '<option value="'+o[0]+'"'+(o[0]===type?' selected':'')+'>'+o[1]+'</option>';
+    }).join('');
+    html+='<div class="chip" style="'+(isOther?'border-color:var(--warn);background:rgba(217,119,6,0.04);':'')+'">'
+      +'<span style="flex:1;font-size:13px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;" title="'+n+'">'+short+'</span>'
+      +'<select data-filename="'+n.replace(/"/g,'&quot;')+'" class="type-select" style="font-size:11px;padding:4px 8px;border-radius:4px;border:1px solid '+(isOther?'#d97706':'var(--border2)')+';background:var(--surface);color:'+(isOther?'#d97706':'var(--accent)')+';font-family:monospace;font-weight:700;cursor:pointer;flex-shrink:0;margin:0 6px;">'+opts+'</select>'
+      +'<button data-remove="'+n.replace(/"/g,'&quot;')+'" class="chip-rm" style="background:none;border:none;cursor:pointer;font-size:14px;color:var(--text-dim);padding:0 2px;flex-shrink:0;">✕</button>'
+      +'</div>';
+  });
+  c.innerHTML=html;
+
+  // Event delegation for selects and remove buttons
+  c.onchange=function(e){
+    var sel=e.target.closest('.type-select');
+    if(sel){
+      var fname=sel.getAttribute('data-filename');
+      if(uploadedFiles[fname]){
+        uploadedFiles[fname].type=sel.value;
+        renderChips();
+        checkReady();
+      }
+    }
+  };
+  c.onclick=function(e){
+    var btn=e.target.closest('[data-remove]');
+    if(btn){
+      var fname=btn.getAttribute('data-remove');
+      delete uploadedFiles[fname];
+      renderChips();
+      checkReady();
+    }
+  };
+}
+
+function changeType(name,newType){
+  if(uploadedFiles[name]){uploadedFiles[name].type=newType;renderChips();checkReady();}
 }
 function checkReady(){
   const ref = document.getElementById('procRef').value.trim();
@@ -1373,6 +1420,11 @@ function renderDivPanel(){
   if(docDivsFinal.length) html+=buildSection('Commercial Invoice (CI) / Packing List (PL) / Proforma (PI)','&#128196;',docDivsFinal,'docs');
   if(ceDivs.length) html+=buildSection('CE Mercante','&#127963;',ceDivs,'ce');
   panel.innerHTML=html;
+  // Store section data on panel for onclick access
+  panel._blDivs=blDivsFinal;
+  panel._docDivs=docDivsFinal;
+  panel._ceDivs=ceDivs;
+  panel._allDivs=divs;
 
   panel.onclick=function(e){
     var btn=e.target.closest('[data-action],[data-section-action]');
@@ -1380,8 +1432,9 @@ function renderDivPanel(){
     var sectionAction=btn.getAttribute('data-section-action');
     if(sectionAction){
       var section=btn.getAttribute('data-section');
-      var sd=section==='bl'?blDivsFinal:(section==='ce'?ceDivs:docDivsFinal);
-      var ref=document.getElementById('procRef')?document.getElementById('procRef').value:'';
+      var sd=section==='bl'?panel._blDivs:(section==='ce'?panel._ceDivs:panel._docDivs);
+      var procRefEl=document.getElementById('procRef');
+      var ref=procRefEl?procRefEl.value:'';
       if(sectionAction==='copyPT') copySectionText(sd,ref,'pt');
       else if(sectionAction==='copyEN') copySectionText(sd,ref,'en');
       else if(sectionAction==='copyES') copySectionText(sd,ref,'es');
