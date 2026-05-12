@@ -1380,7 +1380,7 @@ function renderDivPanel(){
     var sectionAction=btn.getAttribute('data-section-action');
     if(sectionAction){
       var section=btn.getAttribute('data-section');
-      var sd=section==='bl'?blDivs:docDivs;
+      var sd=section==='bl'?blDivsFinal:(section==='ce'?ceDivs:docDivsFinal);
       var ref=document.getElementById('procRef')?document.getElementById('procRef').value:'';
       if(sectionAction==='copyPT') copySectionText(sd,ref,'pt');
       else if(sectionAction==='copyEN') copySectionText(sd,ref,'en');
@@ -1828,15 +1828,15 @@ var FIELD_LABELS = {
 
 function copySectionText(sectionDivs, ref, lang){
   if(!sectionDivs.length){ showToast('Nenhuma divergencia nesta secao','err'); return; }
-  var sectionKey = sectionDivs===getDivergencias().filter(function(d){
-    var g=d.grupo.toLowerCase();
-    return ['logistica bl','logistica','bill of lading'].some(function(k){return g.includes(k);})||
-           d.doc1_label==='BILL OF LADING (BL)'||d.doc2_label==='BILL OF LADING (BL)';
-  }) ? 'bl' : 'docs';
-  // Determine section key by checking if first div is BL type
   var firstD=sectionDivs[0];
-  var isBlSection=firstD&&(firstD.doc1_label==='BILL OF LADING (BL)'||firstD.doc2_label==='BILL OF LADING (BL)'||firstD.grupo.toLowerCase().includes('logistic'));
-  var sk=isBlSection?'bl':'docs';
+  var sk='docs';
+  if(firstD){
+    var fg=firstD.grupo.toLowerCase();
+    var fl1=firstD.doc1_label||'';
+    var fl2=firstD.doc2_label||'';
+    if(fl1==='CE MERCANTE'||fl2==='CE MERCANTE'||fg.includes('ce mercante')) sk='ce';
+    else if(fl1==='BILL OF LADING (BL)'||fl2==='BILL OF LADING (BL)'||fg.includes('logistic')||fg.includes('bill of lading')) sk='bl';
+  }
   var L=FIELD_LABELS[lang];
   var date=new Date().toLocaleDateString('pt-BR');
   var text=SECTION_INTRO[sk][lang](ref);
