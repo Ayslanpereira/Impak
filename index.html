@@ -1018,6 +1018,37 @@ async function runAnalysis(){
       + 'GRUPO Pais de Origem: pais de origem (deve ser igual na CI, PL e CE). '
       + 'Seja extremamente minucioso. Qualquer diferenca de valor, formato, grafia ou dado entre quaisquer documentos deve ser DIVERGENCIA com observacao clara explicando qual documento difere e o que deveria ser.';
 
+    content.push({type:'text',text:prompt});
+
+    setStep(3);
+
+    const resp = await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','x-api-key':_apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+      body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:8000,messages:[{role:'user',content}]})
+    });
+
+    if(!resp.ok){
+      const e=await resp.json().catch(()=>({}));
+      throw new Error('API erro '+resp.status+': '+(e?.error?.message||resp.statusText));
+    }
+
+    const data=await resp.json();
+    const raw=(data.content||[]).map(function(i){return i.text||'';}).join('');
+
+    let result;
+    try{
+      let clean=raw.replace(/```json/gi,'').replace(/```/gi,'').trim();
+      const fb=clean.indexOf('{'); if(fb>0) clean=clean.substring(fb);
+      const lb=clean.lastIndexOf('}'); if(lb>=0) clean=clean.substring(0,lb+1);
+      result=JSON.parse(clean);
+    } catch(e1){
+      const m=raw.match(/\{[\s\S]*\}/);
+      if(!m) throw new Error('A IA nao retornou JSON valido. Tente novamente.');
+      try{ result=JSON.parse(m[0]); } catch(e2){ throw new Error('Erro ao interpretar resposta. Tente novamente.'); }
+    }
+    if(!result.grupos) throw new Error('Resposta incompleta. Tente novamente.');
+
     setStep(4);
 
     // Save process
@@ -1555,257 +1586,84 @@ function printReport(){ exportPDF(); }
 // ─── MESSAGE GENERATOR ───────────────────────────────────────────────
 let currentMsgType = 'agent';
 
-const MSG_TEMPLATES = {
-  agent: {
-    pt: (ref, divs, alerts) => {
-      const date = new Date().toLocaleDateString('pt-BR');
-      let msg = `Prezado Agente de Cargas,
+function buildMsgText(type, lang, ref, divs, alerts) {
+  var date = new Date().toLocaleDateString('pt-BR');
+  var msg = '';
 
-Estamos verificando o draft do Bill of Lading referente ao processo *${ref}* e identificamos os seguintes pontos que precisam de correção antes da emissão final:
-
-`;
-      const blDivs = divs.filter(d => d.doc1_label==='BILL OF LADING' || d.doc2_label==='BILL OF LADING');
-      if(blDivs.length){
-        msg += `*CORREÇÕES NECESSÁRIAS NO BL:*
-
-`;
-        blDivs.forEach((d,i) => {
-          msg += `${i+1}. ${d.campo}
-`;
-          msg += `   • Consta no BL: ${d.doc1_label==='BILL OF LADING'?d.doc1_valor:d.doc2_valor||'N/A'}
-`;
-          msg += `   • Deve ser: ${d.doc1_label==='BILL OF LADING'?d.doc2_valor:d.doc1_valor||'N/A'}
-
-`;
-        });
-      } else {
-        const allDivs = divs.slice(0,5);
-        msg += `*PONTOS A VERIFICAR:*
-
-`;
-        allDivs.forEach((d,i) => {
-          msg += `${i+1}. ${d.campo}
-`;
-          msg += `   • Documento 1 (${d.doc1_label}): ${d.doc1_valor||'N/A'}
-`;
-          msg += `   • Documento 2 (${d.doc2_label}): ${d.doc2_valor||'N/A'}
-`;
-          if(d.observacao) msg += `   • Obs: ${d.observacao}
-`;
-          msg += `
-`;
-        });
-      }
-      if(alerts.length){
-        msg += `*ALERTAS ADICIONAIS:*
-`;
-        alerts.forEach((a,i) => { msg += `${i+1}. ${a}
-`; });
-        msg += `
-`;
-      }
-      msg += `Por favor, enviar o BL corrigido para nossa análise.
-
-Atenciosamente,
-IMPAK Comercial e Importadora Ltda
-${date}`;
-      return msg;
-    },
-    en: (ref, divs, alerts) => {
-      const date = new Date().toLocaleDateString('en-US');
-      let msg = `Dear Freight Agent,
-
-We are reviewing the Bill of Lading draft for process *${ref}* and identified the following corrections needed before final issuance:
-
-`;
-      const blDivs = divs.filter(d => d.doc1_label==='BILL OF LADING' || d.doc2_label==='BILL OF LADING');
-      const items = blDivs.length ? blDivs : divs.slice(0,5);
-      msg += `*CORRECTIONS REQUIRED:*
-
-`;
-      items.forEach((d,i) => {
-        msg += `${i+1}. ${d.campo}
-`;
-        msg += `   • Current: ${d.doc1_valor||'N/A'} (${d.doc1_label})
-`;
-        msg += `   • Should be: ${d.doc2_valor||'N/A'} (${d.doc2_label})
-
-`;
-      });
-      msg += `Please send the corrected BL for our review.
-
-Best regards,
-IMPAK Comercial e Importadora Ltda
-${date}`;
-      return msg;
-    },
-    es: (ref, divs, alerts) => {
-      const date = new Date().toLocaleDateString('es-ES');
-      let msg = `Estimado Agente de Carga,
-
-Estamos revisando el borrador del Bill of Lading para el proceso *${ref}* y hemos identificado las siguientes correcciones necesarias:
-
-`;
-      divs.slice(0,5).forEach((d,i) => {
-        msg += `${i+1}. ${d.campo}
-   • Actual: ${d.doc1_valor||'N/A'}
-   • Debe ser: ${d.doc2_valor||'N/A'}
-
-`;
-      });
-      msg += `Por favor, envíe el BL corregido para nuestra revisión.
-
-Atentamente,
-IMPAK Comercial e Importadora Ltda
-${date}`;
-      return msg;
+  if(type === 'agent') {
+    if(lang === 'pt') {
+      msg = 'Prezado Agente de Cargas,\n\nEstamos verificando o draft do Bill of Lading referente ao processo *' + ref + '* e identificamos os seguintes pontos que precisam de correcao antes da emissao final:\n\n';
+      var blDivs = divs.filter(function(d){ return d.doc1_label==='BILL OF LADING (BL)' || d.doc2_label==='BILL OF LADING (BL)'; });
+      var items = blDivs.length ? blDivs : divs.slice(0,5);
+      msg += '*CORRECOES NECESSARIAS NO BL:*\n\n';
+      items.forEach(function(d,i){ msg += (i+1)+'. '+d.campo+'\n   Consta no BL: '+(d.doc1_label==='BILL OF LADING (BL)'?d.doc1_valor:d.doc2_valor||'N/A')+'\n   Deve ser: '+(d.doc1_label==='BILL OF LADING (BL)'?d.doc2_valor:d.doc1_valor||'N/A')+'\n\n'; });
+      if(alerts.length){ msg += '*ALERTAS:*\n'; alerts.forEach(function(a,i){ msg += (i+1)+'. '+a+'\n'; }); }
+      msg += '\nPor favor, enviar o BL corrigido para nossa analise.\n\nAtenciosamente,\nIMPAK Comercial e Importadora Ltda\n' + date;
+    } else if(lang === 'en') {
+      msg = 'Dear Freight Agent,\n\nWe are reviewing the Bill of Lading draft for process *' + ref + '* and identified the following corrections needed before final issuance:\n\n';
+      var blDivs2 = divs.filter(function(d){ return d.doc1_label==='BILL OF LADING (BL)' || d.doc2_label==='BILL OF LADING (BL)'; });
+      var items2 = blDivs2.length ? blDivs2 : divs.slice(0,5);
+      msg += '*CORRECTIONS REQUIRED:*\n\n';
+      items2.forEach(function(d,i){ msg += (i+1)+'. '+d.campo+'\n   Current (BL): '+(d.doc1_valor||'N/A')+'\n   Should be: '+(d.doc2_valor||'N/A')+'\n\n'; });
+      msg += '\nPlease send the corrected BL for our review.\n\nBest regards,\nIMPAK Comercial e Importadora Ltda\n' + date;
+    } else {
+      msg = 'Estimado Agente de Carga,\n\nEstamos revisando el borrador del Bill of Lading para el proceso *' + ref + '*:\n\n';
+      divs.slice(0,5).forEach(function(d,i){ msg += (i+1)+'. '+d.campo+'\n   Actual: '+(d.doc1_valor||'N/A')+'\n   Debe ser: '+(d.doc2_valor||'N/A')+'\n\n'; });
+      msg += '\nPor favor, enviar el BL corregido.\n\nAtentamente,\nIMPAK Comercial e Importadora Ltda\n' + date;
     }
-  },
-  supplier: {
-    pt: (ref, divs, alerts) => {
-      const date = new Date().toLocaleDateString('pt-BR');
-      let msg = `Prezado Fornecedor,
-
-Em relação ao processo *${ref}*, identificamos divergências nos documentos (Commercial Invoice / Packing List) que precisam ser corrigidas:
-
-`;
-      const supDivs = divs.filter(d => d.doc1_label==='COMMERCIAL INVOICE'||d.doc2_label==='COMMERCIAL INVOICE'||d.doc1_label==='PACKING LIST'||d.doc2_label==='PACKING LIST');
-      const items = supDivs.length ? supDivs : divs;
-      msg += `*CORREÇÕES NECESSÁRIAS:*
-
-`;
-      items.forEach((d,i) => {
-        msg += `${i+1}. ${d.campo}
-`;
-        msg += `   • ${d.doc1_label}: ${d.doc1_valor||'N/A'}
-`;
-        msg += `   • ${d.doc2_label}: ${d.doc2_valor||'N/A'}
-`;
-        if(d.observacao) msg += `   • Observação: ${d.observacao}
-`;
-        msg += `
-`;
-      });
-      msg += `Por favor, emitir documentos corrigidos com urgência.
-
-Atenciosamente,
-IMPAK Comercial e Importadora Ltda
-${date}`;
-      return msg;
-    },
-    en: (ref, divs, alerts) => {
-      const date = new Date().toLocaleDateString('en-US');
-      let msg = `Dear Supplier,
-
-Regarding process *${ref}*, we have identified discrepancies in the shipping documents (Commercial Invoice / Packing List) that require correction:
-
-`;
-      const supDivs = divs.filter(d => d.doc1_label==='COMMERCIAL INVOICE'||d.doc2_label==='COMMERCIAL INVOICE'||d.doc1_label==='PACKING LIST'||d.doc2_label==='PACKING LIST');
-      const items = supDivs.length ? supDivs : divs;
-      msg += `*CORRECTIONS REQUIRED:*
-
-`;
-      items.forEach((d,i) => {
-        msg += `${i+1}. ${d.campo}
-`;
-        msg += `   • ${d.doc1_label}: ${d.doc1_valor||'N/A'}
-`;
-        msg += `   • ${d.doc2_label}: ${d.doc2_valor||'N/A'}
-`;
-        if(d.observacao) msg += `   • Note: ${d.observacao}
-`;
-        msg += `
-`;
-      });
-      if(alerts.length){ msg += `*ADDITIONAL ALERTS:*
-`; alerts.forEach((a,i)=>{ msg+=`${i+1}. ${a}
-`; }); msg+=`
-`; }
-      msg += `Please issue corrected documents as soon as possible.
-
-Best regards,
-IMPAK Comercial e Importadora Ltda
-${date}`;
-      return msg;
-    },
-    es: (ref, divs, alerts) => {
-      const date = new Date().toLocaleDateString('es-ES');
-      let msg = `Estimado Proveedor,
-
-En relación al proceso *${ref}*, hemos identificado discrepancias en los documentos:
-
-`;
-      divs.forEach((d,i) => { msg += `${i+1}. ${d.campo}
-   • ${d.doc1_label}: ${d.doc1_valor||'N/A'}
-   • ${d.doc2_label}: ${d.doc2_valor||'N/A'}
-
-`; });
-      msg += `Por favor, emita documentos corregidos a la brevedad.
-
-Atentamente,
-IMPAK Comercial e Importadora Ltda
-${date}`;
-      return msg;
+  } else if(type === 'supplier') {
+    if(lang === 'pt') {
+      msg = 'Prezado Fornecedor,\n\nEm relacao ao processo *' + ref + '*, identificamos divergencias nos documentos (CI/PL/PI) que precisam ser corrigidas:\n\n';
+      divs.forEach(function(d,i){ msg += (i+1)+'. '+d.campo+'\n   '+d.doc1_label+': '+(d.doc1_valor||'N/A')+'\n   '+d.doc2_label+': '+(d.doc2_valor||'N/A')+'\n'+(d.observacao?'   Obs: '+d.observacao+'\n':'')+'\n'; });
+      msg += '\nPor favor, emitir documentos corrigidos com urgencia.\n\nAtenciosamente,\nIMPAK Comercial e Importadora Ltda\n' + date;
+    } else if(lang === 'en') {
+      msg = 'Dear Supplier,\n\nRegarding process *' + ref + '*, we have identified discrepancies in the shipping documents (CI/PL/PI) that require correction:\n\n';
+      divs.forEach(function(d,i){ msg += (i+1)+'. '+d.campo+'\n   '+d.doc1_label+': '+(d.doc1_valor||'N/A')+'\n   '+d.doc2_label+': '+(d.doc2_valor||'N/A')+'\n'+(d.observacao?'   Note: '+d.observacao+'\n':'')+'\n'; });
+      if(alerts.length){ msg += '*ADDITIONAL ALERTS:*\n'; alerts.forEach(function(a,i){ msg += (i+1)+'. '+a+'\n'; }); }
+      msg += '\nPlease issue corrected documents as soon as possible.\n\nBest regards,\nIMPAK Comercial e Importadora Ltda\n' + date;
+    } else {
+      msg = 'Estimado Proveedor,\n\nEn relacion al proceso *' + ref + '*, hemos identificado discrepancias en los documentos:\n\n';
+      divs.forEach(function(d,i){ msg += (i+1)+'. '+d.campo+'\n   '+d.doc1_label+': '+(d.doc1_valor||'N/A')+'\n   '+d.doc2_label+': '+(d.doc2_valor||'N/A')+'\n\n'; });
+      msg += '\nPor favor, emita documentos corregidos a la brevedad.\n\nAtentamente,\nIMPAK Comercial e Importadora Ltda\n' + date;
     }
-  },
-  all: {
-    pt: (ref, divs, alerts) => {
-      const date = new Date().toLocaleDateString('pt-BR');
-      let msg = `*RELATÓRIO DE CONFERÊNCIA DOCUMENTAL*
-Processo: ${ref} | Data: ${date}
-
-`;
-      msg += `📊 RESUMO: ${divs.length} divergência(s) | ${alerts.length} alerta(s)
-
-`;
-      if(divs.length){ msg += `*DIVERGÊNCIAS:*
-
-`; divs.forEach((d,i)=>{ var obs=d.observacao?('   > '+d.observacao+'\n'):''; msg+=(i+1)+'. '+d.campo+' ('+d.grupo+')\n   '+d.doc1_label+': '+(d.doc1_valor||'N/A')+'\n   '+d.doc2_label+': '+(d.doc2_valor||'N/A')+'\n'+obs+'\n'; }); }
-      if(alerts.length){ msg += `*ALERTAS:*
-`; alerts.forEach((a,i)=>{ msg+=`${i+1}. ${a}
-`; }); }
-      return msg;
-    },
-    en: (ref, divs, alerts) => {
-      const date = new Date().toLocaleDateString('en-US');
-      let msg = `*DOCUMENTARY REVIEW REPORT*
-Process: ${ref} | Date: ${date}
-
-`;
-      msg += `📊 SUMMARY: ${divs.length} divergence(s) | ${alerts.length} alert(s)
-
-`;
-      if(divs.length){ msg += `*DIVERGENCES:*
-
-`; divs.forEach((d,i)=>{ var obs=d.observacao?('   > '+d.observacao+'\n'):''; msg+=(i+1)+'. '+d.campo+' ('+d.grupo+')\n   '+d.doc1_label+': '+(d.doc1_valor||'N/A')+'\n   '+d.doc2_label+': '+(d.doc2_valor||'N/A')+'\n'+obs+'\n'; }); }
-      if(alerts.length){ msg += `*ALERTS:*
-`; alerts.forEach((a,i)=>{ msg+=`${i+1}. ${a}
-`; }); }
-      return msg;
-    },
-    es: (ref, divs, alerts) => {
-      const date = new Date().toLocaleDateString('es-ES');
-      let msg = `*INFORME DE REVISIÓN DOCUMENTAL*
-Proceso: ${ref} | Fecha: ${date}
-
-`;
-      msg += `📊 RESUMEN: ${divs.length} divergencia(s) | ${alerts.length} alerta(s)
-
-`;
-      if(divs.length){ msg += `*DIVERGENCIAS:*
-
-`; divs.forEach((d,i)=>{ msg+=`${i+1}. ${d.campo} (${d.grupo})
-   ${d.doc1_label}: ${d.doc1_valor||'N/A'}
-   ${d.doc2_label}: ${d.doc2_valor||'N/A'}
-
-`; }); }
-      if(alerts.length){ msg += `*ALERTAS:*
-`; alerts.forEach((a,i)=>{ msg+=`${i+1}. ${a}
-`; }); }
-      return msg;
+  } else {
+    if(lang === 'pt') {
+      msg = '*RELATORIO DE CONFERENCIA DOCUMENTAL*\nProcesso: ' + ref + ' | Data: ' + date + '\n\n';
+      msg += 'RESUMO: ' + divs.length + ' divergencia(s) | ' + alerts.length + ' alerta(s)\n\n';
+      if(divs.length){ msg += '*DIVERGENCIAS:*\n\n'; divs.forEach(function(d,i){ msg += (i+1)+'. '+d.campo+' ('+d.grupo+')\n   '+d.doc1_label+': '+(d.doc1_valor||'N/A')+'\n   '+d.doc2_label+': '+(d.doc2_valor||'N/A')+'\n\n'; }); }
+      if(alerts.length){ msg += '*ALERTAS:*\n'; alerts.forEach(function(a,i){ msg += (i+1)+'. '+a+'\n'; }); }
+    } else if(lang === 'en') {
+      msg = '*DOCUMENTARY REVIEW REPORT*\nProcess: ' + ref + ' | Date: ' + date + '\n\n';
+      msg += 'SUMMARY: ' + divs.length + ' divergence(s) | ' + alerts.length + ' alert(s)\n\n';
+      if(divs.length){ msg += '*DIVERGENCES:*\n\n'; divs.forEach(function(d,i){ msg += (i+1)+'. '+d.campo+' ('+d.grupo+')\n   '+d.doc1_label+': '+(d.doc1_valor||'N/A')+'\n   '+d.doc2_label+': '+(d.doc2_valor||'N/A')+'\n\n'; }); }
+      if(alerts.length){ msg += '*ALERTS:*\n'; alerts.forEach(function(a,i){ msg += (i+1)+'. '+a+'\n'; }); }
+    } else {
+      msg = '*INFORME DE REVISION DOCUMENTAL*\nProceso: ' + ref + ' | Fecha: ' + date + '\n\n';
+      msg += 'RESUMEN: ' + divs.length + ' divergencia(s) | ' + alerts.length + ' alerta(s)\n\n';
+      if(divs.length){ msg += '*DIVERGENCIAS:*\n\n'; divs.forEach(function(d,i){ msg += (i+1)+'. '+d.campo+' ('+d.grupo+')\n   '+d.doc1_label+': '+(d.doc1_valor||'N/A')+'\n   '+d.doc2_label+': '+(d.doc2_valor||'N/A')+'\n\n'; }); }
     }
   }
+  return msg;
+}
+
+const MSG_TEMPLATES = {
+  agent: {
+    pt: function(ref,divs,alerts){ return buildMsgText('agent','pt',ref,divs,alerts); },
+    en: function(ref,divs,alerts){ return buildMsgText('agent','en',ref,divs,alerts); },
+    es: function(ref,divs,alerts){ return buildMsgText('agent','es',ref,divs,alerts); }
+  },
+  supplier: {
+    pt: function(ref,divs,alerts){ return buildMsgText('supplier','pt',ref,divs,alerts); },
+    en: function(ref,divs,alerts){ return buildMsgText('supplier','en',ref,divs,alerts); },
+    es: function(ref,divs,alerts){ return buildMsgText('supplier','es',ref,divs,alerts); }
+  },
+  all: {
+    pt: function(ref,divs,alerts){ return buildMsgText('all','pt',ref,divs,alerts); },
+    en: function(ref,divs,alerts){ return buildMsgText('all','en',ref,divs,alerts); },
+    es: function(ref,divs,alerts){ return buildMsgText('all','es',ref,divs,alerts); }
+  }
 };
+
 
 function openMsgModal(type, lang){
   currentMsgType = type;
