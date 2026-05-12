@@ -630,7 +630,7 @@ textarea.field-input{resize:vertical;min-height:80px;}
     <input type="file" id="fileInput" accept=".pdf,image/*" multiple onchange="addFiles(this.files)" style="display:none">
     <span class="dz-icon">📂</span>
     <div class="dz-title">Arraste todos os arquivos aqui</div>
-    <div class="dz-sub">PDF e imagens · Invoice, Packing List, BL, Proforma · múltiplos de uma vez</div>
+    <div class="dz-sub">PDF e imagens · CI, PL, BL, PI, CE Mercante · múltiplos de uma vez</div>
   </div>
   <div class="file-chips" id="fileChips"></div>
 
@@ -760,8 +760,8 @@ const DOC_KW = {
   proforma:['proforma','sales contract','pi_','_pi','pi ','_sc','_sc_'],
 };
 const DOC_ICON = {invoice:'📄',packing:'📦',bl:'🚢',proforma:'📋',outros:'🗂️'};
-const DOC_LBL = {invoice:'COMMERCIAL INVOICE (CI)',packing:'PACKING LIST (PL)',bl:'BILL OF LADING (BL)',proforma:'PROFORMA INVOICE (PI)',outros:'OUTRO DOCUMENTO'};
-const DOC_PT = {invoice:'Commercial Invoice (CI)',packing:'Packing List (PL)',bl:'Bill of Lading (BL)',proforma:'Proforma Invoice (PI)',outros:'Outro Documento'};
+const DOC_LBL = {invoice:'COMMERCIAL INVOICE (CI)',packing:'PACKING LIST (PL)',bl:'BILL OF LADING (BL)',proforma:'PROFORMA INVOICE (PI)',ce:'CE MERCANTE',outros:'OUTRO DOCUMENTO'};
+const DOC_PT = {invoice:'Commercial Invoice (CI)',packing:'Packing List (PL)',bl:'Bill of Lading (BL)',proforma:'Proforma Invoice (PI)',ce:'CE Mercante',outros:'Outro Documento'};
 
 function guessType(name){
   var b=name.toLowerCase().replace(/\.[a-z]{2,4}$/,'');
@@ -778,6 +778,9 @@ function guessType(name){
   // PL
   if(/(_|^|-)pl(_|-|$)/.test(b)) return 'packing';
   if(b.includes('packing_list')||b.includes('packing list')||b.includes('packing')) return 'packing';
+  // CE Mercante
+  if(b.includes('ce_mercante')||b.includes('cemercante')||b.includes('ce-mercante')) return 'ce';
+  if(/(_|^|-)ce(_|-|$)/.test(b)&&!b.includes('invoice')&&!b.includes('price')) return 'ce';
   // Fallback
   if(b.includes('invoice')) return 'invoice';
   return 'outros';
@@ -950,55 +953,18 @@ async function runAnalysis(){
       + 'JSON obrigatorio: {"resumo":{"campos_ok":0,"divergencias":0,"alertas":0},"grupos":[{"titulo":"Identificacao","campos":[{"campo":"campo","doc1_label":"doc","doc1_valor":"val","doc2_label":"doc","doc2_valor":"val","status":"OK","observacao":null}]}],"alertas":["string"],"documentos":[{"tipo":"tipo","dados":{"campo":"valor"}}]}. '
       + 'IMPORTANTE: alertas deve ser array de STRINGS SIMPLES, nunca objetos. '
       + 'Grupos obrigatorios e campos a verificar em cada documento: '
-      + 'GRUPO Identificacao: numero invoice, numero BL, numero PO/referencia, data emissao de cada documento, navio e voyage. '
+      + 'GRUPO Identificacao: numero invoice, numero BL, numero CE Mercante (se presente), numero PO/referencia, data emissao de cada documento, navio e voyage. '
       + 'GRUPO Importador e Encomendante: nome importador, CNPJ importador, endereco importador, nome encomendante (se houver), CNPJ encomendante, endereco encomendante. '
-      + 'GRUPO Exportador e Fabricante: nome shipper/exportador, endereco shipper, notify party, consignee, endereco fabricante (especialmente no Packing List). '
+      + 'GRUPO Exportador e Fabricante: nome shipper/exportador, endereco shipper, notify party, consignee, endereco fabricante. '
       + 'GRUPO Mercadoria: descricao do produto (ex: MEDIUM RADIAL TRUCK TIRE), marca, medida/tamanho, padrao/modelo, PR (ply rating), LI/SR, quantidade total, numero de containers. '
-      + 'GRUPO Codigos EUDEMON: se a marca for EUDEMON, verificar se cada item tem o codigo correto conforme tabela: 275/80R22.5 UD188 149/146L 18PR = 3301000094ab, 275/80R22.5 UF195 149/146L 18PR = 3302001532eu, 295/80R22.5 UD188 154/149L 18PR = 3302002217, 295/80R22.5 UF195 154/149M 18PR = 3302002218, 235/75R17.5 18PR 143/141L TL UD188 = 3302001815ab, 215/75R17.5 16PR 135/133L TL UD188 = 3302001861ab, 215/75R17.5 16PR 135/133L TL UF195 = 3302001609ab, 235/75R17.5 18PR 143/141L TL UF195 = 3302001608ab. Verificar se o codigo no documento bate com a medida e modelo. '
-      + 'GRUPO Valores: preco unitario USD, valor total USD por item, valor total geral USD, incoterm, condicoes de pagamento, dados bancarios (beneficiario, banco, swift, conta). '
-      + 'GRUPO Pesos e Volumes: peso bruto total, peso liquido total, peso por container, CBM/medida volumetrica, numero de pecas por container. '
-      + 'GRUPO Logistica BL: porto de origem, porto de destino, numero container, numero lacre, tipo container (40HQ etc), NCM, free time, valor frete (USD), frete prepaid ou collect, informacao sobre madeira (wooden package). '
-      + 'GRUPO Pais de Origem: pais de origem declarado na invoice, pais de origem no packing list, pais de fabricacao. '
-      + 'Para cada campo compare os valores entre TODOS os documentos disponiveis. Status: OK se igual em todos, DIVERGENCIA se diferente entre documentos, AUSENTE se esperado mas nao encontrado. '
-      + 'Seja minucioso. Qualquer diferenca mesmo que pequena deve ser apontada como DIVERGENCIA com observacao explicando.'
-    content.push({type:'text',text:prompt});
-
-    setStep(3);
-
-    const resp = await fetch('https://api.anthropic.com/v1/messages',{
-      method:'POST',
-      headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
-      body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:8000,messages:[{role:'user',content}]})
-    });
-
-    if(!resp.ok){
-      const e=await resp.json().catch(()=>({}));
-      throw new Error(`API erro ${resp.status}: ${e?.error?.message||resp.statusText}`);
-    }
-
-    const data=await resp.json();
-    const raw=(data.content||[]).map(i=>i.text||'').join('');
-    let result;
-    try{
-      let clean = raw.replace(/```json/gi,'').replace(/```/gi,'').trim();
-      const fb = clean.indexOf('{'); if(fb > 0) clean = clean.substring(fb);
-      const lb = clean.lastIndexOf('}'); if(lb >= 0) clean = clean.substring(0, lb+1);
-      result = JSON.parse(clean);
-    } catch(e1){
-      const m = raw.match(/\{[\s\S]*\}/);
-      if(!m) throw new Error('A IA nao retornou JSON valido. Tente novamente.');
-      try{ result = JSON.parse(m[0]); } catch(e2){ throw new Error('Erro ao interpretar resposta. Tente novamente.'); }
-    }
-    if(!result.grupos) throw new Error('Resposta incompleta. Tente novamente.');
-
-    setStep(4);
-
-    // Save process
-    const ref = document.getElementById('procRef').value.trim();
-    const exp = document.getElementById('procExp').value.trim();
-    const obs = document.getElementById('procObs').value.trim();
-    const status = result.resumo.divergencias>0?'err':result.resumo.alertas>0?'warn':'ok';
-
+      + 'GRUPO Codigos EUDEMON: se a marca for EUDEMON verificar codigo por item: 275/80R22.5 UD188 149/146L 18PR=3301000094ab, 275/80R22.5 UF195 149/146L 18PR=3302001532eu, 295/80R22.5 UD188 154/149L 18PR=3302002217, 295/80R22.5 UF195 154/149M 18PR=3302002218, 235/75R17.5 18PR 143/141L TL UD188=3302001815ab, 215/75R17.5 16PR 135/133L TL UD188=3302001861ab, 215/75R17.5 16PR 135/133L TL UF195=3302001609ab, 235/75R17.5 18PR 143/141L TL UF195=3302001608ab. '
+      + 'GRUPO Valores: preco unitario USD, valor total USD por item, valor total geral USD, incoterm, condicoes de pagamento, dados bancarios. '
+      + 'GRUPO Pesos e Volumes: peso bruto total, peso liquido total, peso por container, CBM, numero de pecas por container. '
+      + 'GRUPO Logistica BL: porto de origem, porto de destino, numero container, numero lacre, tipo container, NCM, free time, valor frete USD, frete prepaid ou collect, informacao sobre madeira. '
+      + 'GRUPO CE Mercante (se o documento CE Mercante estiver presente): numero CE Mercante, numero do conhecimento (BL), CNPJ importador no CE, nome importador no CE, porto de origem no CE, porto de destino no CE, peso bruto no CE, peso liquido no CE, valor aduaneiro no CE, NCM no CE, descricao da mercadoria no CE, numero container no CE, quantidade de volumes no CE. Comparar TODOS esses campos do CE Mercante contra os valores nos demais documentos (BL, Invoice, Packing List). Qualquer diferenca deve ser apontada como DIVERGENCIA. '
+      + 'GRUPO Pais de Origem: pais de origem na invoice, pais de origem no packing list, pais de fabricacao. '
+      + 'Para cada campo compare os valores entre TODOS os documentos. Status: OK se igual, DIVERGENCIA se diferente, AUSENTE se esperado mas nao encontrado. '
+      + 'Seja minucioso. Qualquer diferenca deve ser DIVERGENCIA com observacao explicando.';
     const proc = {
       id: Date.now(),
       ref,
@@ -1388,9 +1354,20 @@ function renderDivPanel(){
     return html;
   }
 
+  // Also split out CE Mercante divergences
+  const CE_GROUPS=['ce mercante','ce_mercante'];
+  const ceDivs=divs.filter(function(d){
+    var g=d.grupo.toLowerCase();
+    return CE_GROUPS.some(function(k){return g.includes(k);})||
+           d.doc1_label==='CE MERCANTE'||d.doc2_label==='CE MERCANTE';
+  });
+  const blDivsFinal=blDivs.filter(function(d){return ceDivs.indexOf(d)===-1;});
+  const docDivsFinal=docDivs.filter(function(d){return ceDivs.indexOf(d)===-1;});
+
   var html='';
-  if(blDivs.length) html+=buildSection('Bill of Lading (BL)','&#128674;',blDivs,'bl');
-  if(docDivs.length) html+=buildSection('Commercial Invoice (CI) / Packing List (PL) / Proforma (PI)','&#128196;',docDivs,'docs');
+  if(blDivsFinal.length) html+=buildSection('Bill of Lading (BL)','&#128674;',blDivsFinal,'bl');
+  if(docDivsFinal.length) html+=buildSection('Commercial Invoice (CI) / Packing List (PL) / Proforma (PI)','&#128196;',docDivsFinal,'docs');
+  if(ceDivs.length) html+=buildSection('CE Mercante','&#127963;',ceDivs,'ce');
   panel.innerHTML=html;
 
   panel.onclick=function(e){
@@ -1825,6 +1802,11 @@ var SECTION_INTRO = {
     pt: function(ref){ return 'Prezado Fornecedor,\n\nIdentificamos divergencias nos documentos (Commercial Invoice / Packing List / Proforma) do processo *'+ref+'* que precisam ser corrigidas:\n'; },
     en: function(ref){ return 'Dear Supplier,\n\nWe have identified discrepancies in the shipping documents (Commercial Invoice / Packing List / Proforma) for process *'+ref+'* that require correction:\n'; },
     es: function(ref){ return 'Estimado Proveedor,\n\nHemos identificado discrepancias en los documentos (Commercial Invoice / Packing List / Proforma) del proceso *'+ref+'* que requieren correccion:\n'; }
+  },
+  ce:{
+    pt: function(ref){ return 'Prezado responsavel,\n\nIdentificamos divergencias no CE Mercante do processo *'+ref+'* em relacao aos demais documentos (BL, Invoice, Packing List). Os itens abaixo precisam ser verificados:\n'; },
+    en: function(ref){ return 'Dear responsible,\n\nWe have identified discrepancies in the CE Mercante (Brazilian cargo manifest) for process *'+ref+'* when compared to BL, Invoice and Packing List:\n'; },
+    es: function(ref){ return 'Estimado responsable,\n\nHemos identificado discrepancias en el CE Mercante del proceso *'+ref+'* en relacion a los demas documentos:\n'; }
   }
 };
 
