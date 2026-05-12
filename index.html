@@ -946,7 +946,21 @@ async function runAnalysis(){
     setStep(2);
 
     const docList=[...new Set(Object.values(uploadedFiles).map(f=>DOC_LBL[f.type]))].join(', ');
-    const prompt = 'Retorne APENAS JSON puro sem markdown sem texto extra. Voce e especialista em conferencia documental de importacao de pneus. Analise os documentos: ' + docList + '. JSON obrigatorio com EXATAMENTE esta estrutura: {"resumo":{"campos_ok":0,"divergencias":0,"alertas":0},"grupos":[{"titulo":"Identificacao","campos":[{"campo":"campo","doc1_label":"doc","doc1_valor":"val","doc2_label":"doc","doc2_valor":"val","status":"OK","observacao":null}]}],"alertas":["texto do alerta aqui como string simples"],"documentos":[{"tipo":"tipo","dados":{"campo":"valor"}}]}. IMPORTANTE: o array alertas deve conter APENAS strings simples de texto, NUNCA objetos JSON. Exemplo correto: "alertas":["Divergencia encontrada no shipper"]. Exemplo ERRADO: "alertas":[{"tipo":"CRITICO","titulo":"..."}]. Grupos: Identificacao, Partes Envolvidas, Mercadoria, Valores, Logistica. Campos: numero invoice/BL/proforma, importador nome CNPJ endereco, exportador, produtos tamanho marca padrao, quantidades totais, pesos bruto liquido, CBM, precos unitarios e totais USD, incoterm, porto origem destino, navio, containers, datas, condicoes pagamento. Status OK se igual DIVERGENCIA se diferente AUSENTE se faltando.';
+        const prompt = 'Retorne APENAS JSON puro sem markdown sem texto extra. Voce e especialista em conferencia documental de importacao de pneus da Asia para o Brasil. Analise os documentos: ' + docList + '. '
+      + 'JSON obrigatorio: {"resumo":{"campos_ok":0,"divergencias":0,"alertas":0},"grupos":[{"titulo":"Identificacao","campos":[{"campo":"campo","doc1_label":"doc","doc1_valor":"val","doc2_label":"doc","doc2_valor":"val","status":"OK","observacao":null}]}],"alertas":["string"],"documentos":[{"tipo":"tipo","dados":{"campo":"valor"}}]}. '
+      + 'IMPORTANTE: alertas deve ser array de STRINGS SIMPLES, nunca objetos. '
+      + 'Grupos obrigatorios e campos a verificar em cada documento: '
+      + 'GRUPO Identificacao: numero invoice, numero BL, numero PO/referencia, data emissao de cada documento, navio e voyage. '
+      + 'GRUPO Importador e Encomendante: nome importador, CNPJ importador, endereco importador, nome encomendante (se houver), CNPJ encomendante, endereco encomendante. '
+      + 'GRUPO Exportador e Fabricante: nome shipper/exportador, endereco shipper, notify party, consignee, endereco fabricante (especialmente no Packing List). '
+      + 'GRUPO Mercadoria: descricao do produto (ex: MEDIUM RADIAL TRUCK TIRE), marca, medida/tamanho, padrao/modelo, PR (ply rating), LI/SR, quantidade total, numero de containers. '
+      + 'GRUPO Codigos EUDEMON: se a marca for EUDEMON, verificar se cada item tem o codigo correto conforme tabela: 275/80R22.5 UD188 149/146L 18PR = 3301000094ab, 275/80R22.5 UF195 149/146L 18PR = 3302001532eu, 295/80R22.5 UD188 154/149L 18PR = 3302002217, 295/80R22.5 UF195 154/149M 18PR = 3302002218, 235/75R17.5 18PR 143/141L TL UD188 = 3302001815ab, 215/75R17.5 16PR 135/133L TL UD188 = 3302001861ab, 215/75R17.5 16PR 135/133L TL UF195 = 3302001609ab, 235/75R17.5 18PR 143/141L TL UF195 = 3302001608ab. Verificar se o codigo no documento bate com a medida e modelo. '
+      + 'GRUPO Valores: preco unitario USD, valor total USD por item, valor total geral USD, incoterm, condicoes de pagamento, dados bancarios (beneficiario, banco, swift, conta). '
+      + 'GRUPO Pesos e Volumes: peso bruto total, peso liquido total, peso por container, CBM/medida volumetrica, numero de pecas por container. '
+      + 'GRUPO Logistica BL: porto de origem, porto de destino, numero container, numero lacre, tipo container (40HQ etc), NCM, free time, valor frete (USD), frete prepaid ou collect, informacao sobre madeira (wooden package). '
+      + 'GRUPO Pais de Origem: pais de origem declarado na invoice, pais de origem no packing list, pais de fabricacao. '
+      + 'Para cada campo compare os valores entre TODOS os documentos disponiveis. Status: OK se igual em todos, DIVERGENCIA se diferente entre documentos, AUSENTE se esperado mas nao encontrado. '
+      + 'Seja minucioso. Qualquer diferenca mesmo que pequena deve ser apontada como DIVERGENCIA com observacao explicando.'
     content.push({type:'text',text:prompt});
 
     setStep(3);
@@ -1305,98 +1319,114 @@ function getDivergencias(){
 function renderDivPanel(){
   const panel=document.getElementById('divPanel');
   if(!panel) return;
-  const L=LANG[getLang()];
   const divs=getDivergencias();
   if(!divs.length){
-    panel.innerHTML='<div style="padding:24px;text-align:center;color:var(--ok);font-size:14px;">Nenhuma divergencia encontrada.</div>';
+    panel.innerHTML='<div style="padding:24px;text-align:center;color:var(--ok);font-size:14px;">&#10003; Nenhuma divergencia encontrada.</div>';
     return;
   }
-  let html='';
-  divs.forEach(function(d,i){
-    const key=d.grupo+'-'+d.campo;
-    const resolved=divergResolved[key];
-    const isDiv=d.status==='DIVERGENCIA';
-    const ac=isDiv?'#dc2626':'#d97706';
-    const bg=isDiv?'rgba(220,38,38,0.05)':'rgba(217,119,6,0.05)';
-    const doc1Val=(d.doc1_valor||'Nao informado').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-    const doc2Val=(d.doc2_valor||'Nao encontrado').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-    const resolveStyle=resolved
-      ?'border:1px solid #16a34a;background:rgba(22,163,74,0.1);color:#16a34a;'
-      :'border:1px solid #c5d0db;background:transparent;color:#64748b;';
-    const statusText=resolved?'&#10003; Resolvido':'Pendente';
-    const statusColor=resolved?'#16a34a':'#64748b';
-    const btnBase='padding:6px 12px;border-radius:4px;font-size:10px;font-family:monospace;font-weight:700;cursor:pointer;';
-
-    html+='<div class="div-card" data-idx="'+i+'" style="background:#fff;border:1px solid '+ac+'44;border-left:4px solid '+ac+';border-radius:8px;margin-bottom:14px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.07);">';
-    html+='<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 16px;background:'+bg+';border-bottom:1px solid '+ac+'33;">';
-    html+='<div style="display:flex;align-items:center;gap:8px;">';
-    html+='<span style="font-size:10px;font-weight:700;padding:3px 8px;border-radius:3px;background:'+bg+';color:'+ac+';font-family:monospace;">'+(isDiv?'DIVERGENCIA':'AUSENTE')+'</span>';
-    html+='<span style="font-size:10px;color:#64748b;font-family:monospace;text-transform:uppercase;">'+d.grupo+'</span>';
-    html+='</div>';
-    html+='<span class="div-status-'+i+'" style="font-size:11px;font-weight:600;color:'+statusColor+';">'+statusText+'</span>';
-    html+='</div>';
-    html+='<div style="padding:14px 16px;">';
-    html+='<div style="font-size:15px;font-weight:700;color:#0a1929;margin-bottom:12px;">'+d.campo+'</div>';
-    html+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">';
-    html+='<div style="border:1px solid #dce3ea;border-radius:6px;overflow:hidden;">';
-    html+='<div style="background:#e8edf2;padding:6px 10px;font-size:9px;font-weight:700;color:#64748b;font-family:monospace;text-transform:uppercase;">'+(d.doc1_label||'DOC 1')+'</div>';
-    html+='<div style="padding:10px;font-size:13px;color:#1e2d3d;line-height:1.4;">'+doc1Val+'</div>';
-    html+='</div>';
-    html+='<div style="border:2px solid '+ac+';border-radius:6px;overflow:hidden;">';
-    html+='<div style="background:'+bg+';padding:6px 10px;display:flex;align-items:center;justify-content:space-between;">';
-    html+='<span style="font-size:9px;font-weight:700;color:'+ac+';font-family:monospace;text-transform:uppercase;">'+(d.doc2_label||'DOC 2')+'</span>';
-    html+='<span style="font-size:10px;color:'+ac+';">DIFERE</span>';
-    html+='</div>';
-    html+='<div style="padding:10px;font-size:13px;font-weight:600;color:'+ac+';line-height:1.4;background:'+bg+';">'+doc2Val+'</div>';
-    html+='</div>';
-    html+='</div>';
-    if(d.observacao){
-      const obs=d.observacao.replace(/</g,'&lt;').replace(/>/g,'&gt;');
-      html+='<div style="margin-bottom:10px;padding:8px 10px;background:rgba(217,119,6,0.06);border-radius:4px;font-size:12px;color:#d97706;font-style:italic;border-left:3px solid #d97706;">'+obs+'</div>';
-    }
-    const notaVal=(resolved&&resolved.nota)?resolved.nota.replace(/"/g,'&quot;'):'';
-    html+='<input class="div-nota-'+i+' field-input" placeholder="'+L.nota+'" value="'+notaVal+'" style="font-size:12px;padding:7px 10px;width:100%;">';
-    html+='</div>';
-    html+='<div style="display:flex;gap:6px;padding:10px 16px;background:#f5f8fb;border-top:1px solid #dce3ea;flex-wrap:wrap;">';
-    html+='<button data-action="resolve" data-idx="'+i+'" style="'+btnBase+resolveStyle+'">'+L.resolv+'</button>';
-    html+='<button data-action="copyPT" data-idx="'+i+'" style="'+btnBase+'border:1px solid #c5d0db;background:transparent;color:#64748b;">Copiar PT</button>';
-    html+='<button data-action="copyEN" data-idx="'+i+'" style="'+btnBase+'border:1px solid #c5d0db;background:transparent;color:#64748b;">Copy EN</button>';
-    html+='<button data-action="email" data-idx="'+i+'" style="'+btnBase+'border:1px solid #c5d0db;background:transparent;color:#64748b;">E-mail</button>';
-    html+='</div>';
-    html+='</div>';
+  const BL_GROUPS=['logistica bl','logistica','bill of lading'];
+  const blDivs=divs.filter(function(d){
+    var g=d.grupo.toLowerCase();
+    return BL_GROUPS.some(function(k){return g.includes(k);})||
+           d.doc1_label==='BILL OF LADING (BL)'||d.doc2_label==='BILL OF LADING (BL)';
   });
+  const docDivs=divs.filter(function(d){return blDivs.indexOf(d)===-1;});
+
+  function buildSection(title,icon,sectionDivs,sectionKey){
+    if(!sectionDivs.length) return '';
+    var html='';
+    html+='<div style="background:var(--accent);color:#fff;border-radius:8px 8px 0 0;padding:14px 18px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">';
+    html+='<div style="display:flex;align-items:center;gap:10px;">';
+    html+='<span style="font-size:18px;">'+icon+'</span>';
+    html+='<div><div style="font-size:10px;font-family:monospace;opacity:0.7;text-transform:uppercase;letter-spacing:0.1em;">'+sectionDivs.length+' divergencia(s)</div>';
+    html+='<div style="font-size:15px;font-weight:700;">'+title+'</div></div></div>';
+    html+='<div style="display:flex;gap:6px;flex-wrap:wrap;">';
+    var btnStyle='padding:7px 12px;border-radius:4px;font-size:10px;font-family:monospace;font-weight:700;cursor:pointer;border:1px solid rgba(255,255,255,0.4);background:rgba(255,255,255,0.1);color:#fff;';
+    html+='<button data-section-action="copyPT" data-section="'+sectionKey+'" style="'+btnStyle+'">&#128203; PT</button>';
+    html+='<button data-section-action="copyEN" data-section="'+sectionKey+'" style="'+btnStyle+'">&#128203; EN</button>';
+    html+='<button data-section-action="copyES" data-section="'+sectionKey+'" style="'+btnStyle+'">&#128203; ES</button>';
+    html+='<button data-section-action="email" data-section="'+sectionKey+'" style="'+btnStyle+'">&#9993; E-mail</button>';
+    html+='</div></div>';
+    html+='<div style="border:1px solid var(--border);border-top:none;border-radius:0 0 8px 8px;overflow:hidden;margin-bottom:24px;">';
+    sectionDivs.forEach(function(d,i){
+      var gi=divs.indexOf(d);
+      var key=d.grupo+'-'+d.campo;
+      var resolved=divergResolved[key];
+      var isDiv=d.status==='DIVERGENCIA';
+      var ac=isDiv?'#dc2626':'#d97706';
+      var bg=isDiv?'rgba(220,38,38,0.04)':'rgba(217,119,6,0.04)';
+      var v1=(d.doc1_valor||'Nao informado').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+      var v2=(d.doc2_valor||'Nao encontrado').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+      var bt=i>0?'border-top:1px solid var(--border);':'';
+      html+='<div style="'+bt+'background:var(--surface);">';
+      html+='<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 16px;background:'+bg+';border-left:3px solid '+ac+';">';
+      html+='<div style="display:flex;align-items:center;gap:8px;">';
+      html+='<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:3px;color:'+ac+';font-family:monospace;background:'+bg+';">'+(isDiv?'DIVERGENCIA':'AUSENTE')+'</span>';
+      html+='<span style="font-size:13px;font-weight:600;color:var(--text-bright);">'+d.campo+'</span></div>';
+      html+='<span class="div-status-'+gi+'" style="font-size:10px;font-weight:600;color:'+(resolved?'#16a34a':'#94a3b8')+';">'+(resolved?'&#10003; Resolvido':'Pendente')+'</span></div>';
+      html+='<div style="display:grid;grid-template-columns:1fr 1fr;">';
+      html+='<div style="padding:10px 16px;border-right:1px solid var(--border);">';
+      html+='<div style="font-size:9px;font-weight:700;color:var(--text-dim);font-family:monospace;text-transform:uppercase;margin-bottom:4px;">'+(d.doc1_label||'DOC 1')+'</div>';
+      html+='<div style="font-size:13px;color:var(--text);line-height:1.4;">'+v1+'</div></div>';
+      html+='<div style="padding:10px 16px;border-left:2px solid '+ac+';">';
+      html+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">';
+      html+='<span style="font-size:9px;font-weight:700;color:'+ac+';font-family:monospace;text-transform:uppercase;">'+(d.doc2_label||'DOC 2')+'</span>';
+      html+='<span style="font-size:9px;color:'+ac+';font-weight:700;">&#9888; DIFERE</span></div>';
+      html+='<div style="font-size:13px;font-weight:600;color:'+ac+';line-height:1.4;">'+v2+'</div></div></div>';
+      if(d.observacao){
+        var obs=d.observacao.replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        html+='<div style="padding:8px 16px;background:rgba(217,119,6,0.05);border-top:1px solid rgba(217,119,6,0.15);font-size:12px;color:#d97706;font-style:italic;">'+obs+'</div>';
+      }
+      html+='<div style="display:flex;gap:8px;padding:10px 16px;background:var(--surface2);border-top:1px solid var(--border);align-items:center;">';
+      var nv=(resolved&&resolved.nota)?resolved.nota.replace(/"/g,'&quot;'):'';
+      html+='<input class="div-nota-'+gi+' field-input" placeholder="Nota..." value="'+nv+'" style="flex:1;font-size:12px;padding:6px 10px;">';
+      var rs=resolved?'border:1px solid #16a34a;background:rgba(22,163,74,0.1);color:#16a34a;':'border:1px solid #c5d0db;background:transparent;color:#64748b;';
+      html+='<button data-action="resolve" data-idx="'+gi+'" style="padding:6px 12px;border-radius:4px;font-size:10px;font-family:monospace;font-weight:700;cursor:pointer;white-space:nowrap;'+rs+'">'+(resolved?'Desfazer':'Marcar OK')+'</button>';
+      html+='</div></div>';
+    });
+    html+='</div>';
+    return html;
+  }
+
+  var html='';
+  if(blDivs.length) html+=buildSection('Bill of Lading (BL)','&#128674;',blDivs,'bl');
+  if(docDivs.length) html+=buildSection('Commercial Invoice (CI) / Packing List (PL) / Proforma (PI)','&#128196;',docDivs,'docs');
   panel.innerHTML=html;
 
   panel.onclick=function(e){
-    const btn=e.target.closest('[data-action]');
+    var btn=e.target.closest('[data-action],[data-section-action]');
     if(!btn) return;
-    const action=btn.getAttribute('data-action');
-    const i=parseInt(btn.getAttribute('data-idx'));
-    const divs2=getDivergencias();
-    const d=divs2[i];
+    var sectionAction=btn.getAttribute('data-section-action');
+    if(sectionAction){
+      var section=btn.getAttribute('data-section');
+      var sd=section==='bl'?blDivs:docDivs;
+      var ref=document.getElementById('procRef')?document.getElementById('procRef').value:'';
+      if(sectionAction==='copyPT') copySectionText(sd,ref,'pt');
+      else if(sectionAction==='copyEN') copySectionText(sd,ref,'en');
+      else if(sectionAction==='copyES') copySectionText(sd,ref,'es');
+      else if(sectionAction==='email') emailSection(sd,section,ref);
+      return;
+    }
+    var action=btn.getAttribute('data-action');
+    var i=parseInt(btn.getAttribute('data-idx'));
+    var d=divs[i];
     if(!d) return;
-    const key=d.grupo+'-'+d.campo;
+    var key=d.grupo+'-'+d.campo;
     if(action==='resolve'){
-      const nota=panel.querySelector('.div-nota-'+i).value;
+      var nota=panel.querySelector('.div-nota-'+i).value;
       if(divergResolved[key]){
         delete divergResolved[key];
-        const s=panel.querySelector('.div-status-'+i);
-        if(s){s.textContent='Pendente';s.style.color='#64748b';}
-        btn.textContent=LANG[getLang()].resolv;
-        btn.style.cssText=btn.style.cssText.replace(/border:[^;]+;/,'border:1px solid #c5d0db;');
-        btn.style.color='#64748b';btn.style.background='transparent';
+        var s=panel.querySelector('.div-status-'+i);
+        if(s){s.textContent='Pendente';s.style.color='#94a3b8';}
+        btn.textContent='Marcar OK';btn.style.border='1px solid #c5d0db';btn.style.color='#64748b';btn.style.background='transparent';
       } else {
         divergResolved[key]={nota:nota,time:new Date().toLocaleString('pt-BR')};
-        const s=panel.querySelector('.div-status-'+i);
-        if(s){s.innerHTML='&#10003; Resolvido';s.style.color='#16a34a';}
-        btn.textContent='Desfazer';
-        btn.style.border='1px solid #16a34a';
-        btn.style.color='#16a34a';btn.style.background='rgba(22,163,74,0.1)';
+        var s2=panel.querySelector('.div-status-'+i);
+        if(s2){s2.innerHTML='&#10003; Resolvido';s2.style.color='#16a34a';}
+        btn.textContent='Desfazer';btn.style.border='1px solid #16a34a';btn.style.color='#16a34a';btn.style.background='rgba(22,163,74,0.1)';
         showToast('Marcado como resolvido!','ok');
       }
-    } else if(action==='copyPT'){ copyOneDivPT(i);
-    } else if(action==='copyEN'){ copyOneDivEN(i);
-    } else if(action==='email'){ emailOneDiv(i); }
+    }
   };
 }
 
@@ -1779,48 +1809,86 @@ function closeMsgModal(e){
   if(e.target===document.getElementById('msgModalBg')) document.getElementById('msgModalBg').style.display='none';
 }
 
-// ─── PER-DIVERGENCE ACTIONS ──────────────────────────────────────────
-function getOneDivText(i, lang){
-  const divs = getDivergencias();
-  const d = divs[i];
-  if(!d) return '';
-  const ref = document.getElementById('procRef')?.value||'';
-  const date = new Date().toLocaleDateString('pt-BR');
-  if(lang==='en'){
-    return 'Documentary Discrepancy Notice\nProcess: '+ref+' | Date: '+date+'\n\n'
-      +'Field: '+d.campo+'\nGroup: '+d.grupo+'\n\n'
-      +''+d.doc1_label+': '+(d.doc1_valor||'N/A')+'\n'
-      +''+d.doc2_label+': '+(d.doc2_valor||'N/A')+'\n'
-      +(d.observacao?'Note: '+d.observacao+'\n':'')
-      +'\nPlease correct and reissue the document as soon as possible.\n\nBest regards,\nIMPAK Comercial e Importadora Ltda';
+// ─── SECTION COPY/EMAIL ──────────────────────────────────────────────
+var SECTION_LABELS = {
+  bl: {pt:'Bill of Lading (BL)', en:'Bill of Lading (BL)', es:'Bill of Lading (BL)'},
+  docs: {pt:'Commercial Invoice / Packing List / Proforma', en:'Commercial Invoice / Packing List / Proforma', es:'Commercial Invoice / Packing List / Proforma'}
+};
+
+var SECTION_INTRO = {
+  bl:{
+    pt: function(ref){ return 'Prezado Agente de Cargas,\n\nIdentificamos divergencias no Bill of Lading do processo *'+ref+'* que precisam ser corrigidas antes da emissao final:\n'; },
+    en: function(ref){ return 'Dear Freight Agent,\n\nWe have identified discrepancies in the Bill of Lading for process *'+ref+'* that require correction before final issuance:\n'; },
+    es: function(ref){ return 'Estimado Agente de Carga,\n\nHemos identificado discrepancias en el Bill of Lading del proceso *'+ref+'* que requieren correccion:\n'; }
+  },
+  docs:{
+    pt: function(ref){ return 'Prezado Fornecedor,\n\nIdentificamos divergencias nos documentos (Commercial Invoice / Packing List / Proforma) do processo *'+ref+'* que precisam ser corrigidas:\n'; },
+    en: function(ref){ return 'Dear Supplier,\n\nWe have identified discrepancies in the shipping documents (Commercial Invoice / Packing List / Proforma) for process *'+ref+'* that require correction:\n'; },
+    es: function(ref){ return 'Estimado Proveedor,\n\nHemos identificado discrepancias en los documentos (Commercial Invoice / Packing List / Proforma) del proceso *'+ref+'* que requieren correccion:\n'; }
   }
-  return 'Notificação de Divergência Documental\nProcesso: '+ref+' | Data: '+date+'\n\n'
-    +'Campo: '+d.campo+'\nGrupo: '+d.grupo+'\n\n'
-    +''+d.doc1_label+': '+(d.doc1_valor||'N/A')+'\n'
-    +''+d.doc2_label+': '+(d.doc2_valor||'N/A')+'\n'
-    +(d.observacao?'Observação: '+d.observacao+'\n':'')
-    +'\nPor favor, corrigir e reemitir o documento com urgência.\n\nAtenciosamente,\nIMPAK Comercial e Importadora Ltda';
+};
+
+var SECTION_CLOSING = {
+  pt: '\nPor favor, corrigir e reemitir os documentos com urgencia.\n\nAtenciosamente,\nIMPAK Comercial e Importadora Ltda',
+  en: '\nPlease correct and reissue the documents as soon as possible.\n\nBest regards,\nIMPAK Comercial e Importadora Ltda',
+  es: '\nPor favor, corrija y reemita los documentos a la brevedad.\n\nAtentamente,\nIMPAK Comercial e Importadora Ltda'
+};
+
+var FIELD_LABELS = {
+  pt:{field:'Campo', doc1:'Documento', doc2:'Divergencia', note:'Obs'},
+  en:{field:'Field', doc1:'Document', doc2:'Discrepancy', note:'Note'},
+  es:{field:'Campo', doc1:'Documento', doc2:'Discrepancia', note:'Obs'}
+};
+
+function copySectionText(sectionDivs, ref, lang){
+  if(!sectionDivs.length){ showToast('Nenhuma divergencia nesta secao','err'); return; }
+  var sectionKey = sectionDivs===getDivergencias().filter(function(d){
+    var g=d.grupo.toLowerCase();
+    return ['logistica bl','logistica','bill of lading'].some(function(k){return g.includes(k);})||
+           d.doc1_label==='BILL OF LADING (BL)'||d.doc2_label==='BILL OF LADING (BL)';
+  }) ? 'bl' : 'docs';
+  // Determine section key by checking if first div is BL type
+  var firstD=sectionDivs[0];
+  var isBlSection=firstD&&(firstD.doc1_label==='BILL OF LADING (BL)'||firstD.doc2_label==='BILL OF LADING (BL)'||firstD.grupo.toLowerCase().includes('logistic'));
+  var sk=isBlSection?'bl':'docs';
+  var L=FIELD_LABELS[lang];
+  var date=new Date().toLocaleDateString('pt-BR');
+  var text=SECTION_INTRO[sk][lang](ref);
+  text+='\n';
+  sectionDivs.forEach(function(d,i){
+    var resolved=divergResolved[d.grupo+'-'+d.campo];
+    text+=(i+1)+'. *'+d.campo+'*\n';
+    text+='   '+L.doc1+' ('+d.doc1_label+'): '+(d.doc1_valor||'N/A')+'\n';
+    text+='   '+L.doc2+' ('+d.doc2_label+'): '+(d.doc2_valor||'N/A')+'\n';
+    if(d.observacao) text+='   '+L.note+': '+d.observacao+'\n';
+    if(resolved&&resolved.nota) text+='   Status: Resolvido - '+resolved.nota+'\n';
+    text+='\n';
+  });
+  text+=SECTION_CLOSING[lang];
+  navigator.clipboard.writeText(text)
+    .then(function(){showToast('Copiado em '+lang.toUpperCase()+'!','ok');})
+    .catch(function(){prompt('Copie o texto:',text);});
 }
 
-function copyOneDivPT(i){
-  const txt = getOneDivText(i,'pt');
-  navigator.clipboard.writeText(txt).then(()=>showToast('Copiado em Português!','ok')).catch(()=>{ prompt('Copie:',txt); });
-}
-
-function copyOneDivEN(i){
-  const txt = getOneDivText(i,'en');
-  navigator.clipboard.writeText(txt).then(()=>showToast('Copied in English!','ok')).catch(()=>{ prompt('Copy:',txt); });
-}
-
-function emailOneDiv(i){
-  const divs = getDivergencias();
-  const d = divs[i];
-  if(!d) return;
-  const ref = document.getElementById('procRef')?.value||'';
-  const subject = encodeURIComponent('Divergência Documental - Processo '+ref+' - '+d.campo);
-  const body = encodeURIComponent(getOneDivText(i,'pt')+'\n\n---\n\n'+getOneDivText(i,'en'));
+function emailSection(sectionDivs, sectionKey, ref){
+  var subjectPT='Divergencias Documentais - Processo '+ref+' - '+(sectionKey==='bl'?'BL':'Invoice/Packing List');
+  var subject=encodeURIComponent(subjectPT);
+  var bodyPT=SECTION_INTRO[sectionKey].pt(ref)+'\n';
+  var bodyEN=SECTION_INTRO[sectionKey].en(ref)+'\n';
+  sectionDivs.forEach(function(d,i){
+    var line=(i+1)+'. '+d.campo+'\n   '+d.doc1_label+': '+(d.doc1_valor||'N/A')+'\n   '+d.doc2_label+': '+(d.doc2_valor||'N/A')+'\n'+(d.observacao?'   Obs: '+d.observacao+'\n':'')+'\n';
+    bodyPT+=line; bodyEN+=line;
+  });
+  bodyPT+=SECTION_CLOSING.pt;
+  bodyEN+=SECTION_CLOSING.en;
+  var body=encodeURIComponent(bodyPT+'\n\n---\n\n'+bodyEN);
   window.open('mailto:?subject='+subject+'&body='+body);
 }
+
+// Legacy single-div functions kept for compatibility
+function copyOneDivPT(i){ var divs=getDivergencias(); copySectionText([divs[i]],'','pt'); }
+function copyOneDivEN(i){ var divs=getDivergencias(); copySectionText([divs[i]],'','en'); }
+function emailOneDiv(i){ var divs=getDivergencias(); emailSection([divs[i]],'docs',''); }
 
 // ─── TOAST ───────────────────────────────────────────────────────────
 function showToast(msg,type='ok'){
