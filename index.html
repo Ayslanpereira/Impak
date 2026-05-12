@@ -760,12 +760,26 @@ const DOC_KW = {
   proforma:['proforma','sales contract','pi_','_pi','pi ','_sc','_sc_'],
 };
 const DOC_ICON = {invoice:'📄',packing:'📦',bl:'🚢',proforma:'📋',outros:'🗂️'};
-const DOC_LBL = {invoice:'COMMERCIAL INVOICE',packing:'PACKING LIST',bl:'BILL OF LADING',proforma:'PROFORMA / CONTRATO',outros:'OUTRO DOCUMENTO'};
-const DOC_PT = {invoice:'Commercial Invoice',packing:'Packing List',bl:'Bill of Lading',proforma:'Proforma / Contrato',outros:'Outro'};
+const DOC_LBL = {invoice:'COMMERCIAL INVOICE (CI)',packing:'PACKING LIST (PL)',bl:'BILL OF LADING (BL)',proforma:'PROFORMA INVOICE (PI)',outros:'OUTRO DOCUMENTO'};
+const DOC_PT = {invoice:'Commercial Invoice (CI)',packing:'Packing List (PL)',bl:'Bill of Lading (BL)',proforma:'Proforma Invoice (PI)',outros:'Outro Documento'};
 
 function guessType(name){
-  const l = name.toLowerCase();
-  for(const[t,kws] of Object.entries(DOC_KW)) if(kws.some(k=>l.includes(k))) return t;
+  var b=name.toLowerCase().replace(/\.[a-z]{2,4}$/,'');
+  // BL
+  if(/(_|^|-)bl(_|-|$)/.test(b)||/(_|^|-)hbl(_|-|$)/.test(b)||/(_|^|-)mbl(_|-|$)/.test(b)) return 'bl';
+  if(b.includes('lading')||b.includes('bill_of')) return 'bl';
+  // PI - must come before CI/invoice
+  if(/(_|^|-)pi(_|-|$)/.test(b)) return 'proforma';
+  if(b.includes('proforma')||b.includes('pro_forma')||b.includes('sales_contract')||b.includes('sales contract')) return 'proforma';
+  // CI
+  if(/(_|^|-)ci(_|-|$)/.test(b)) return 'invoice';
+  if(b.includes('commercial_invoice')||b.includes('commercial invoice')) return 'invoice';
+  if(/(_|^|-)invoice(_|-|$)/.test(b)) return 'invoice';
+  // PL
+  if(/(_|^|-)pl(_|-|$)/.test(b)) return 'packing';
+  if(b.includes('packing_list')||b.includes('packing list')||b.includes('packing')) return 'packing';
+  // Fallback
+  if(b.includes('invoice')) return 'invoice';
   return 'outros';
 }
 
@@ -776,6 +790,15 @@ let _processes = [];
 try{ _processes = JSON.parse(localStorage.getItem('impak_processes')||'[]'); }catch(e){ _processes=[]; }
 
 function getProcesses(){ return _processes; }
+function migrateAlerts(procs){
+  // Fix any saved processes that have object alerts
+  return procs.map(function(p){
+    if(p.alertas&&p.alertas.length){
+      p.alertas = p.alertas.map(extractAlert);
+    }
+    return p;
+  });
+}
 function saveProcesses(p){ _processes=p; try{ localStorage.setItem('impak_processes',JSON.stringify(p)); }catch(e){} }
 function getApiKey(){ return _apiKey; }
 function saveApiKey(v){ _apiKey=v.trim(); try{ localStorage.setItem('impak_apikey',v.trim()); }catch(e){} updateApiStatus(); }
@@ -807,6 +830,9 @@ window.onload = function(){
       document.getElementById('apiKeyInput').value = saved.trim();
     }
   }catch(e){}
+  // Migrate old saved processes
+  _processes = migrateAlerts(_processes);
+  try{ localStorage.setItem('impak_processes', JSON.stringify(_processes)); }catch(e){}
   updateApiStatus();
   updateApiStatus();
   renderDashboard();
@@ -968,17 +994,7 @@ async function runAnalysis(){
       status,
       resumo: result.resumo,
       grupos: result.grupos,
-      alertas: (result.alertas||[]).map(a=>{
-        if(typeof a==='string') return a;
-        if(typeof a==='object'&&a!==null){
-          // Extract meaningful text from object
-          return a.descricao||a.titulo||a.texto||a.message||a.observacao||
-                 (a.titulo&&a.descricao?(a.titulo+': '+a.descricao):null)||
-                 Object.values(a).filter(v=>typeof v==='string').join(' - ')||
-                 JSON.stringify(a);
-        }
-        return String(a);
-      }),
+      alertas: (result.alertas||[]).map(extractAlert),
       documentos: result.documentos,
       log:[{msg:`Conferência realizada — ${Object.keys(uploadedFiles).length} documentos analisados`,time:new Date().toLocaleString('pt-BR'),type:'ok'}]
     };
@@ -1143,6 +1159,20 @@ function procRowHTML(p){
 }
 
 // ─── PROCESS MODAL ────────────────────────────────────────────────────
+function extractAlert(a){
+  if(typeof a==='string') return a;
+  if(typeof a==='object'&&a!==null){
+    var parts=[];
+    if(a.titulo) parts.push(a.titulo);
+    if(a.descricao) parts.push(a.descricao);
+    if(a.impacto) parts.push('Impacto: '+a.impacto);
+    if(parts.length) return parts.join(' — ');
+    var vals=Object.values(a).filter(function(v){return typeof v==='string';});
+    return vals.join(' — ')||JSON.stringify(a);
+  }
+  return String(a);
+}
+
 function openProcess(id){
   const procs=getProcesses();
   const p=procs.find(x=>x.id===id);
@@ -1161,11 +1191,7 @@ function openProcess(id){
   }
 
   // Normalize alerts to strings
-  const alertTexts=(p.alertas||[]).map(a=>{
-    if(typeof a==='string') return a;
-    if(typeof a==='object'&&a!==null) return a.descricao||a.titulo||a.texto||a.message||JSON.stringify(a);
-    return String(a);
-  });
+  const alertTexts=(p.alertas||[]).map(extractAlert);
 
   let html='<div class="detail-section"><div class="sec" style="margin-bottom:12px">Resumo</div>';
   html+='<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">';
