@@ -1016,7 +1016,17 @@ async function runAnalysis(){
       + 'GRUPO Logistica BL: porto de origem (igual em todos os docs), porto de destino (igual em todos), numero container (igual no PL, BL e CE), numero lacre (igual no PL, BL e CE), tipo container, NCM (igual no BL e CE), free time, valor frete USD, frete prepaid ou collect, informacao sobre madeira. '
       + 'GRUPO CE Mercante (se presente): numero CE, numero BL no CE (deve bater com o BL), CNPJ importador no CE (deve bater com CI e PL), porto origem no CE (deve bater com BL e CI), porto destino no CE (deve bater com BL e CI), peso bruto no CE (deve bater com CI, PL e BL), peso liquido no CE (idem), valor aduaneiro, NCM no CE (deve bater com BL), descricao no CE (deve bater com demais), container no CE (deve bater com BL e PL), quantidade no CE (deve bater com CI, PL e BL). '
       + 'GRUPO Pais de Origem: pais de origem (deve ser igual na CI, PL e CE). '
-      + 'Seja extremamente minucioso. Qualquer diferenca de valor, formato, grafia ou dado entre quaisquer documentos deve ser DIVERGENCIA com observacao clara explicando qual documento difere e o que deveria ser.';    const proc = {
+      + 'Seja extremamente minucioso. Qualquer diferenca de valor, formato, grafia ou dado entre quaisquer documentos deve ser DIVERGENCIA com observacao clara explicando qual documento difere e o que deveria ser.';
+
+    setStep(4);
+
+    // Save process
+    const ref = document.getElementById('procRef').value.trim();
+    const exp = document.getElementById('procExp').value.trim();
+    const obs = document.getElementById('procObs').value.trim();
+    const status = result.resumo.divergencias>0?'err':result.resumo.alertas>0?'warn':'ok';
+
+    const proc = {
       id: Date.now(),
       ref,
       exportador: exp || extrairExportador(result),
