@@ -952,20 +952,24 @@ async function runAnalysis(){
         const prompt = 'Retorne APENAS JSON puro sem markdown sem texto extra. Voce e especialista em conferencia documental de importacao de pneus da Asia para o Brasil. Analise os documentos: ' + docList + '. '
       + 'JSON obrigatorio: {"resumo":{"campos_ok":0,"divergencias":0,"alertas":0},"grupos":[{"titulo":"Identificacao","campos":[{"campo":"campo","doc1_label":"doc","doc1_valor":"val","doc2_label":"doc","doc2_valor":"val","status":"OK","observacao":null}]}],"alertas":["string"],"documentos":[{"tipo":"tipo","dados":{"campo":"valor"}}]}. '
       + 'IMPORTANTE: alertas deve ser array de STRINGS SIMPLES, nunca objetos. '
-      + 'Grupos obrigatorios e campos a verificar em cada documento: '
-      + 'GRUPO Identificacao: numero invoice, numero BL, numero CE Mercante (se presente), numero PO/referencia, data emissao de cada documento, navio e voyage. '
-      + 'GRUPO Importador e Encomendante: nome importador, CNPJ importador, endereco importador, nome encomendante (se houver), CNPJ encomendante, endereco encomendante. '
-      + 'GRUPO Exportador e Fabricante: nome shipper/exportador, endereco shipper, notify party, consignee, endereco fabricante. '
-      + 'GRUPO Mercadoria: descricao do produto (ex: MEDIUM RADIAL TRUCK TIRE), marca, medida/tamanho, padrao/modelo, PR (ply rating), LI/SR, quantidade total, numero de containers. '
-      + 'GRUPO Codigos EUDEMON: se a marca for EUDEMON verificar codigo por item: 275/80R22.5 UD188 149/146L 18PR=3301000094ab, 275/80R22.5 UF195 149/146L 18PR=3302001532eu, 295/80R22.5 UD188 154/149L 18PR=3302002217, 295/80R22.5 UF195 154/149M 18PR=3302002218, 235/75R17.5 18PR 143/141L TL UD188=3302001815ab, 215/75R17.5 16PR 135/133L TL UD188=3302001861ab, 215/75R17.5 16PR 135/133L TL UF195=3302001609ab, 235/75R17.5 18PR 143/141L TL UF195=3302001608ab. '
-      + 'GRUPO Valores: preco unitario USD, valor total USD por item, valor total geral USD, incoterm, condicoes de pagamento, dados bancarios. '
-      + 'GRUPO Pesos e Volumes: peso bruto total, peso liquido total, peso por container, CBM, numero de pecas por container. '
-      + 'GRUPO Logistica BL: porto de origem, porto de destino, numero container, numero lacre, tipo container, NCM, free time, valor frete USD, frete prepaid ou collect, informacao sobre madeira. '
-      + 'GRUPO CE Mercante (se o documento CE Mercante estiver presente): numero CE Mercante, numero do conhecimento (BL), CNPJ importador no CE, nome importador no CE, porto de origem no CE, porto de destino no CE, peso bruto no CE, peso liquido no CE, valor aduaneiro no CE, NCM no CE, descricao da mercadoria no CE, numero container no CE, quantidade de volumes no CE. Comparar TODOS esses campos do CE Mercante contra os valores nos demais documentos (BL, Invoice, Packing List). Qualquer diferenca deve ser apontada como DIVERGENCIA. '
-      + 'GRUPO Pais de Origem: pais de origem na invoice, pais de origem no packing list, pais de fabricacao. '
-      + 'Para cada campo compare os valores entre TODOS os documentos. Status: OK se igual, DIVERGENCIA se diferente, AUSENTE se esperado mas nao encontrado. '
-      + 'Seja minucioso. Qualquer diferenca deve ser DIVERGENCIA com observacao explicando.';
-    const proc = {
+      + 'REGRA FUNDAMENTAL DE CONFERENCIA: Cada campo deve ter o MESMO valor em TODOS os documentos onde aparece. '
+      + 'Exemplo: se Peso Bruto aparece na Invoice como 28.000,00 KGS, no Packing List e no BL deve ser exatamente 28.000,00 KGS. '
+      + 'Qualquer diferenca entre quaisquer dois documentos, mesmo que minima (ex: 28.000 vs 28000 vs 28,000.00), deve ser apontada como DIVERGENCIA. '
+      + 'Para cada campo que aparece em mais de um documento, compare TODOS os valores entre si. '
+      + 'No JSON, doc1_label e doc1_valor = primeiro documento onde aparece o valor de referencia; doc2_label e doc2_valor = documento onde o valor e DIFERENTE ou AUSENTE. '
+      + 'Se um campo aparece em 3 documentos e todos sao iguais = OK. Se qualquer um difere = DIVERGENCIA indicando qual documento difere e qual valor tem. '
+      + 'Grupos obrigatorios e campos a verificar: '
+      + 'GRUPO Identificacao: numero invoice (deve ser igual na CI, PL e CE), numero BL (deve ser igual no BL, PL, CI e CE), numero PO/referencia, data emissao, navio e voyage (deve ser igual em todos). '
+      + 'GRUPO Importador e Encomendante: nome importador (igual em todos os docs), CNPJ importador (igual em todos), endereco importador, nome encomendante, CNPJ encomendante. '
+      + 'GRUPO Exportador e Fabricante: nome shipper/exportador (igual em todos), endereco shipper, notify party, consignee, endereco fabricante. '
+      + 'GRUPO Mercadoria: descricao do produto (igual em todos), marca, medida/tamanho, padrao/modelo, PR, LI/SR, quantidade total (deve ser igual em CI, PL, BL e CE). '
+      + 'GRUPO Codigos EUDEMON: se marca for EUDEMON verificar codigo por item: 275/80R22.5 UD188 149/146L 18PR=3301000094ab, 275/80R22.5 UF195 149/146L 18PR=3302001532eu, 295/80R22.5 UD188 154/149L 18PR=3302002217, 295/80R22.5 UF195 154/149M 18PR=3302002218, 235/75R17.5 18PR 143/141L TL UD188=3302001815ab, 215/75R17.5 16PR 135/133L TL UD188=3302001861ab, 215/75R17.5 16PR 135/133L TL UF195=3302001609ab, 235/75R17.5 18PR 143/141L TL UF195=3302001608ab. '
+      + 'GRUPO Valores: preco unitario USD (igual na CI e PI), valor total USD (igual na CI e PI), incoterm (igual em todos), condicoes de pagamento (igual na CI e PI), dados bancarios. '
+      + 'GRUPO Pesos e Volumes: peso bruto total (deve ser IDENTICO na CI, PL, BL e CE - qualquer diferenca e DIVERGENCIA), peso liquido total (idem), CBM (deve ser igual no PL e BL), numero de pecas (deve ser igual em CI, PL, BL e CE). '
+      + 'GRUPO Logistica BL: porto de origem (igual em todos os docs), porto de destino (igual em todos), numero container (igual no PL, BL e CE), numero lacre (igual no PL, BL e CE), tipo container, NCM (igual no BL e CE), free time, valor frete USD, frete prepaid ou collect, informacao sobre madeira. '
+      + 'GRUPO CE Mercante (se presente): numero CE, numero BL no CE (deve bater com o BL), CNPJ importador no CE (deve bater com CI e PL), porto origem no CE (deve bater com BL e CI), porto destino no CE (deve bater com BL e CI), peso bruto no CE (deve bater com CI, PL e BL), peso liquido no CE (idem), valor aduaneiro, NCM no CE (deve bater com BL), descricao no CE (deve bater com demais), container no CE (deve bater com BL e PL), quantidade no CE (deve bater com CI, PL e BL). '
+      + 'GRUPO Pais de Origem: pais de origem (deve ser igual na CI, PL e CE). '
+      + 'Seja extremamente minucioso. Qualquer diferenca de valor, formato, grafia ou dado entre quaisquer documentos deve ser DIVERGENCIA com observacao clara explicando qual documento difere e o que deveria ser.';    const proc = {
       id: Date.now(),
       ref,
       exportador: exp || extrairExportador(result),
