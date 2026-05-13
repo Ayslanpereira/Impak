@@ -1008,28 +1008,28 @@ async function runAnalysis(){
 
     const docList=[...new Set(Object.values(uploadedFiles).map(f=>DOC_LBL[f.type]))].join(', ');
         const prompt = 'Retorne APENAS JSON puro sem markdown sem texto extra. Voce e especialista em conferencia documental de importacao de pneus da Asia para o Brasil. Analise os documentos: ' + docList + '. '
-      + 'Retorne JSON com esta estrutura exata: {"resumo":{"campos_ok":0,"divergencias":0,"alertas":0},"grupos":[{"titulo":"string","campos":[{"campo":"string","doc1_label":"string","doc1_valor":"string","doc2_label":"string","doc2_valor":"string","status":"OK","observacao":null}]}],"alertas":["string"]}. Nao inclua o campo documentos para economizar tokens. '
+      + 'JSON obrigatorio: {"resumo":{"campos_ok":0,"divergencias":0,"alertas":0},"grupos":[{"titulo":"Identificacao","campos":[{"campo":"campo","doc1_label":"doc","doc1_valor":"val","doc2_label":"doc","doc2_valor":"val","status":"OK","observacao":null}]}],"alertas":["string"]}. '
       + 'IMPORTANTE: alertas deve ser array de STRINGS SIMPLES, nunca objetos. '
-      + 'REGRA FUNDAMENTAL DE CONFERENCIA: Cada campo deve ter o MESMO valor em TODOS os documentos onde aparece. '
-      + 'Exemplo: se Peso Bruto aparece na Invoice como 28.000,00 KGS, no Packing List e no BL deve ser exatamente 28.000,00 KGS. '
-      + 'Qualquer diferenca entre quaisquer dois documentos, mesmo que minima (ex: 28.000 vs 28000 vs 28,000.00), deve ser apontada como DIVERGENCIA. '
-      + 'Para cada campo que aparece em mais de um documento, compare TODOS os valores entre si. '
-      + 'No JSON, doc1_label e doc1_valor = primeiro documento onde aparece o valor de referencia; doc2_label e doc2_valor = documento onde o valor e DIFERENTE ou AUSENTE. '
-      + 'Se um campo aparece em 3 documentos e todos sao iguais = OK. Se qualquer um difere = DIVERGENCIA indicando qual documento difere e qual valor tem. '
-      + 'Grupos obrigatorios e campos a verificar: '
-      + 'GRUPO Identificacao: numero invoice (deve ser igual na CI, PL e CE), numero BL (deve ser igual no BL, PL, CI e CE), numero PO/referencia, data emissao, navio e voyage (deve ser igual em todos). '
-      + 'GRUPO Importador e Encomendante: nome importador (igual em todos os docs), CNPJ importador (igual em todos), endereco importador, nome encomendante, CNPJ encomendante. '
+      + 'REGRAS DE COMPARACAO CRITICAS: '
+      + '1. NUMEROS: Ao comparar valores numericos, normalize antes: ignore zeros extras apos virgula/ponto decimal, ignore separadores de milhar. Exemplos que SAO iguais: 17.548,00 = 17.548,000 = 17548 = 17,548.00. So marque DIVERGENCIA se o numero em si for diferente. '
+      + '2. TRANSBORDO: Quando o navio/vessel difere entre CI/PL e BL, verifique se ha indicacao de transbordo ou baldeacao (termos: transhipment, transbordo, feeder, connecting vessel). Se houver transbordo, o navio PODE ser diferente entre os documentos - isso e NORMAL. Nesse caso status=OK com observacao explicando o transbordo. So marque DIVERGENCIA se nao houver indicacao de transbordo e os navios forem realmente diferentes. '
+      + '3. FORMATO DE DATAS: 2026-03-16 = 16/03/2026 = 16-Mar-2026 = March 16, 2026. Nao marque como divergencia se for a mesma data em formato diferente. '
+      + '4. ABREVIACOES: HO CHI MINH = HO CHI MINH PORT = HCMH PORT. NAVEGANTES = NAVEGANTES, BRAZIL = NAVEGANTES/SC. Mesmos valores com abreviacoes diferentes = OK. '
+      + 'REGRA FUNDAMENTAL: Cada campo deve ter o MESMO valor em TODOS os documentos onde aparece. Para campos numericos, compare os valores normalizados. '
+      + 'Grupos obrigatorios: '
+      + 'GRUPO Identificacao: numero invoice (igual na CI, PL e CE), numero BL (igual no BL, PL, CI e CE), numero PO/referencia, data emissao, navio/vessel (verificar transbordo antes de marcar divergencia). '
+      + 'GRUPO Importador e Encomendante: nome importador (igual em todos), CNPJ importador (igual em todos), endereco importador, nome encomendante, CNPJ encomendante. '
       + 'GRUPO Exportador e Fabricante: nome shipper/exportador (igual em todos), endereco shipper, notify party, consignee, endereco fabricante. '
-      + 'GRUPO Mercadoria: descricao do produto (igual em todos), marca, medida/tamanho, padrao/modelo, PR, LI/SR, quantidade total (deve ser igual em CI, PL, BL e CE). '
+      + 'GRUPO Mercadoria: descricao do produto, marca, medida/tamanho, padrao/modelo, PR, LI/SR, quantidade total (igual em CI, PL, BL e CE). '
       + 'GRUPO Codigos EUDEMON: se marca for EUDEMON verificar codigo por item: 275/80R22.5 UD188 149/146L 18PR=3301000094ab, 275/80R22.5 UF195 149/146L 18PR=3302001532eu, 295/80R22.5 UD188 154/149L 18PR=3302002217, 295/80R22.5 UF195 154/149M 18PR=3302002218, 235/75R17.5 18PR 143/141L TL UD188=3302001815ab, 215/75R17.5 16PR 135/133L TL UD188=3302001861ab, 215/75R17.5 16PR 135/133L TL UF195=3302001609ab, 235/75R17.5 18PR 143/141L TL UF195=3302001608ab. '
       + 'GRUPO Valores: preco unitario USD (igual na CI e PI), valor total USD (igual na CI e PI), incoterm (igual em todos), condicoes de pagamento (igual na CI e PI), dados bancarios. '
-      + 'GRUPO Pesos e Volumes: peso bruto total (deve ser IDENTICO na CI, PL, BL e CE - qualquer diferenca e DIVERGENCIA), peso liquido total (idem), CBM (deve ser igual no PL e BL), numero de pecas (deve ser igual em CI, PL, BL e CE). '
-      + 'GRUPO Logistica BL: porto de origem (igual em todos os docs), porto de destino (igual em todos), numero container (igual no PL, BL e CE), numero lacre (igual no PL, BL e CE), tipo container, NCM (igual no BL e CE), free time, valor frete USD, frete prepaid ou collect, informacao sobre madeira. '
-      + 'GRUPO CE Mercante (se presente): numero CE, numero BL no CE (deve bater com o BL), CNPJ importador no CE (deve bater com CI e PL), porto origem no CE (deve bater com BL e CI), porto destino no CE (deve bater com BL e CI), peso bruto no CE (deve bater com CI, PL e BL), peso liquido no CE (idem), valor aduaneiro, NCM no CE (deve bater com BL), descricao no CE (deve bater com demais), container no CE (deve bater com BL e PL), quantidade no CE (deve bater com CI, PL e BL). '
-      + 'GRUPO Pais de Origem: pais de origem (deve ser igual na CI, PL e CE). '
-      + 'Seja extremamente minucioso. Qualquer diferenca de valor, formato, grafia ou dado entre quaisquer documentos deve ser DIVERGENCIA com observacao clara explicando qual documento difere e o que deveria ser.';
+      + 'GRUPO Pesos e Volumes: peso bruto total (IDENTICO na CI, PL, BL e CE - normalizar formato antes de comparar), peso liquido total, CBM (igual no PL e BL), numero de pecas (igual em CI, PL, BL e CE). '
+      + 'GRUPO Logistica BL: porto de origem (igual em todos - normalizar abreviacoes), porto de destino (igual em todos), numero container (igual no PL, BL e CE), numero lacre (igual no PL, BL e CE), tipo container, NCM (igual no BL e CE), free time, valor frete USD, frete prepaid ou collect, informacao sobre madeira. '
+      + 'GRUPO CE Mercante (se presente): numero CE, numero BL no CE (deve bater com BL), CNPJ importador no CE (deve bater com CI e PL), porto origem no CE, porto destino no CE, peso bruto no CE (normalizar formato), peso liquido no CE, valor aduaneiro, NCM no CE, descricao no CE, container no CE, quantidade no CE. '
+      + 'GRUPO Pais de Origem: pais de origem (igual na CI, PL e CE). '
+      + 'Seja minucioso. Qualquer divergencia REAL (apos normalizar numeros, datas, abreviacoes e verificar transbordo) deve ser marcada com observacao clara.';
 
-    content.push({type:'text',text:prompt});
+content.push({type:'text',text:prompt});
 
     setStep(3);
 
@@ -1579,9 +1579,9 @@ function renderDivPanel(){
       }
       html+='<div style="display:flex;gap:8px;padding:10px 16px;background:var(--surface2);border-top:1px solid var(--border);align-items:center;">';
       var nv=(resolved&&resolved.nota)?resolved.nota.replace(/"/g,'&quot;'):'';
-      html+='<input class="div-nota-'+gi+' field-input" placeholder="Nota..." value="'+nv+'" style="flex:1;font-size:12px;padding:6px 10px;">';
+      html+='<input class="div-nota-'+gi+' field-input" placeholder="Motivo para aceitar (ex: transbordo normal, formato diferente...)" value="'+nv+'" style="flex:1;font-size:12px;padding:6px 10px;">';
       var rs=resolved?'border:1px solid #16a34a;background:rgba(22,163,74,0.1);color:#16a34a;':'border:1px solid #c5d0db;background:transparent;color:#64748b;';
-      html+='<button data-action="resolve" data-idx="'+gi+'" style="padding:6px 12px;border-radius:4px;font-size:10px;font-family:monospace;font-weight:700;cursor:pointer;white-space:nowrap;'+rs+'">'+(resolved?'Desfazer':'Marcar OK')+'</button>';
+      html+='<button data-action="resolve" data-idx="'+gi+'" style="padding:6px 12px;border-radius:4px;font-size:10px;font-family:monospace;font-weight:700;cursor:pointer;white-space:nowrap;'+rs+'">'+(resolved?'Desfazer':'Aceitar como OK')+'</button>';
       html+='</div></div>';
     });
     html+='</div>';
@@ -1629,22 +1629,35 @@ function renderDivPanel(){
     var d=divs[i];
     if(!d) return;
     var key=d.grupo+'-'+d.campo;
-    if(action==='resolve'){
-      var nota=panel.querySelector('.div-nota-'+i).value;
-      if(divergResolved[key]){
-        delete divergResolved[key];
-        var s=panel.querySelector('.div-status-'+i);
-        if(s){s.textContent='Pendente';s.style.color='#94a3b8';}
-        btn.textContent='Marcar OK';btn.style.border='1px solid #c5d0db';btn.style.color='#64748b';btn.style.background='transparent';
-      } else {
-        divergResolved[key]={nota:nota,time:new Date().toLocaleString('pt-BR')};
-        var s2=panel.querySelector('.div-status-'+i);
-        if(s2){s2.innerHTML='&#10003; Resolvido';s2.style.color='#16a34a';}
-        btn.textContent='Desfazer';btn.style.border='1px solid #16a34a';btn.style.color='#16a34a';btn.style.background='rgba(22,163,74,0.1)';
-        showToast('Marcado como resolvido!','ok');
-      }
-    }
-  };
+if(action==='resolve'){
+var nota=panel.querySelector('.div-nota-'+i).value.trim();
+if(divergResolved[key]){
+  // Undo
+  delete divergResolved[key];
+  var s=panel.querySelector('.div-status-'+i);
+  if(s){s.textContent='Pendente';s.style.color='#94a3b8';}
+  btn.textContent='Aceitar como OK';
+  btn.style.border='1px solid #c5d0db';btn.style.color='#64748b';btn.style.background='transparent';
+  var notaEl=panel.querySelector('.div-nota-'+i);
+  if(notaEl) notaEl.style.borderColor='var(--border2)';
+} else {
+  if(!nota){
+    // Highlight nota field and prompt
+    var notaEl2=panel.querySelector('.div-nota-'+i);
+    if(notaEl2){notaEl2.style.borderColor='var(--warn)';notaEl2.focus();}
+    showToast('Digite o motivo para aceitar esta divergência','warn');
+    return;
+  }
+  divergResolved[key]={nota:nota,time:new Date().toLocaleString('pt-BR')};
+  var s2=panel.querySelector('.div-status-'+i);
+  if(s2){s2.innerHTML='&#10003; Aceito — '+nota.substring(0,30)+(nota.length>30?'...':'');s2.style.color='#16a34a';}
+  btn.textContent='Desfazer';
+  btn.style.border='1px solid #16a34a';btn.style.color='#16a34a';btn.style.background='rgba(22,163,74,0.1)';
+  var notaEl3=panel.querySelector('.div-nota-'+i);
+  if(notaEl3) notaEl3.style.borderColor='#16a34a';
+  showToast('Aceito: '+nota.substring(0,40),'ok');
+}
+}
 }
 
 
@@ -1976,6 +1989,7 @@ function showToast(msg,type='ok'){
   t.className='toast '+type+' show';
   setTimeout(()=>t.className='toast',3000);
 }
-</script>
+
+}</script>
 </body>
 </html>
