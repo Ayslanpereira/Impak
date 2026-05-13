@@ -692,7 +692,7 @@ textarea.field-input{resize:vertical;min-height:80px;}
     <div id="divPanelWrap" style="display:none;margin-top:28px;">
       <div class="sec" style="margin-bottom:14px;">
         <span id="divPanelTitle">Divergências — Gestão e Resolução</span>
-        <select id="langSelect2" class="field-input" onchange="document.getElementById('langSelect').value=this.value;renderDivPanel();" style="width:auto;padding:4px 10px;font-size:11px;margin-left:8px;">
+        <select id="langSelect2" class="field-input" onchange="renderDivPanel();" style="width:auto;padding:4px 10px;font-size:11px;margin-left:8px;">
           <option value="pt">🇧🇷 PT</option>
           <option value="en">🇺🇸 EN</option>
           <option value="es">🇪🇸 ES</option>
@@ -1185,14 +1185,9 @@ function renderResult(r){
   }
 
   // Sync language selectors
-  document.getElementById('langSelect').onchange = function(){
-    document.getElementById('langSelect2').value = this.value;
-    renderDivPanel();
-  };
-  document.getElementById('langSelect2').onchange = function(){
-    document.getElementById('langSelect').value = this.value;
-    renderDivPanel();
-  };
+  // langSelect2 handles language selection
+  const ls2 = document.getElementById('langSelect2');
+  if(ls2) ls2.onchange = function(){ renderDivPanel(); };
 
   ra.scrollIntoView({behavior:'smooth',block:'start'});
 }
@@ -1360,7 +1355,7 @@ const LANG = {
   en:{divergencias:'Divergences Found',alertas:'Alerts',processo:'Process',exportador:'Exporter',data:'Date',campo:'Field',doc1:'Document 1',doc2:'Document 2',status:'Status',obs:'Note',semDiv:'No divergences found.',resolv:'Mark as resolved',resolvido:'✅ Resolved',pendente:'⚠️ Pending',nota:'Add note...',relatorio:'Documentary Review Report',geradoEm:'Generated on'},
   es:{divergencias:'Divergencias Encontradas',alertas:'Alertas',processo:'Proceso',exportador:'Exportador',data:'Fecha',campo:'Campo',doc1:'Documento 1',doc2:'Documento 2',status:'Estado',obs:'Observación',semDiv:'No se encontraron divergencias.',resolv:'Marcar como resuelto',resolvido:'✅ Resuelto',pendente:'⚠️ Pendiente',nota:'Agregar nota...',relatorio:'Informe de Revisión Documental',geradoEm:'Generado el'}
 };
-function getLang(){ return document.getElementById('langSelect')?.value||'pt'; }
+function getLang(){ var s=document.getElementById('langSelect2')||document.getElementById('langSelect'); return s?s.value:'pt'; }
 function t(key){ return LANG[getLang()][key]||LANG['pt'][key]; }
 
 const divergResolved = {};
