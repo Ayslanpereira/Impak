@@ -608,18 +608,10 @@ textarea.field-input{resize:vertical;min-height:80px;}
   <!-- Step 1: Processo info -->
   <div class="sec">01 — Identificação do Processo</div>
   <div class="card" style="margin-bottom:24px;">
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:16px;flex-wrap:wrap;">
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;flex-wrap:wrap;">
       <div class="field-group" style="margin:0">
         <label class="field-label">Referência do Processo *</label>
         <input class="field-input" id="procRef" placeholder="Ex: UD26-009" oninput="checkReady();autoFillProcess();">
-      </div>
-      <div class="field-group" style="margin:0">
-        <label class="field-label">Etapa da Análise *</label>
-        <select class="field-input" id="etapaSelect" onchange="updateEtapaHint()">
-          <option value="1">1 — Análise Inicial</option>
-          <option value="2">2 — Docs Corrigidos</option>
-          <option value="3">3 — Com CE Mercante</option>
-        </select>
       </div>
       <div class="field-group" style="margin:0">
         <label class="field-label">Exportador</label>
@@ -630,9 +622,8 @@ textarea.field-input{resize:vertical;min-height:80px;}
         <input class="field-input" id="procObs" placeholder="Opcional">
       </div>
     </div>
-    <div id="etapaHint" style="margin-top:12px;padding:10px 14px;border-radius:6px;font-size:12px;background:var(--accent-dim);color:var(--accent);border:1px solid rgba(10,45,94,0.15);display:flex;align-items:center;gap:8px;">
-      <span>📋</span>
-      <span id="etapaHintText">Envie os documentos originais: CI, PL, BL e PI para a análise inicial.</span>
+    <div id="procStatus" style="display:none;margin-top:12px;padding:10px 14px;border-radius:6px;font-size:12px;background:var(--accent-dim);color:var(--accent);border:1px solid rgba(10,45,94,0.15);">
+      <span id="procStatusText"></span>
     </div>
   </div>
 
@@ -1071,15 +1062,12 @@ async function runAnalysis(){
     const obs = document.getElementById('procObs').value.trim();
     const status = result.resumo.divergencias>0?'err':result.resumo.alertas>0?'warn':'ok';
 
-    const etapaNum = parseInt(document.getElementById('etapaSelect').value)||1;
-    const etapaTipo = ['','inicial','correcao','ce_mercante'][etapaNum]||'inicial';
-    const docsUsados = Object.keys(uploadedFiles).join(', ');
-
-    const novaEtapa = {
-      numero: etapaNum,
-      tipo: etapaTipo,
+    const docsUsados = Object.values(uploadedFiles).map(function(f){ return DOC_PT[f.type]||f.file.name; }).join(', ');
+    const novaAnalise = {
+      id: Date.now(),
       data: new Date().toLocaleString('pt-BR'),
       docs: docsUsados,
+      docTypes: Object.values(uploadedFiles).map(function(f){ return f.type; }),
       resumo: result.resumo,
       grupos: result.grupos,
       alertas: (result.alertas||[]).map(extractAlert),
@@ -1089,22 +1077,16 @@ async function runAnalysis(){
     let proc = processes.find(function(p){ return p.ref===ref; });
 
     if(proc){
-      // Add etapa to existing process
-      proc.etapas = proc.etapas||[];
-      // Replace if same etapa number exists
-      const existIdx = proc.etapas.findIndex(function(e){ return e.numero===etapaNum; });
-      if(existIdx>=0) proc.etapas[existIdx]=novaEtapa;
-      else proc.etapas.push(novaEtapa);
-      proc.etapas.sort(function(a,b){return a.numero-b.numero;});
-      // Update main status from latest etapa
+      proc.analises = proc.analises||[];
+      proc.analises.push(novaAnalise);
       proc.status = status;
       proc.resumo = result.resumo;
       proc.grupos = result.grupos;
-      proc.alertas = novaEtapa.alertas;
+      proc.alertas = novaAnalise.alertas;
       proc.log = proc.log||[];
-      proc.log.push({msg:'Etapa '+etapaNum+' ('+etapaTipo+'): '+result.resumo.divergencias+' divergência(s), '+result.resumo.alertas+' alerta(s)',time:new Date().toLocaleString('pt-BR'),type:result.resumo.divergencias>0?'err':'ok'});
+      var docList2 = Object.values(uploadedFiles).map(function(f){return DOC_PT[f.type]||'doc';}).join(', ');
+      proc.log.push({msg:'Nova análise ('+docList2+'): '+result.resumo.divergencias+' diverg., '+result.resumo.alertas+' alertas',time:new Date().toLocaleString('pt-BR'),type:result.resumo.divergencias>0?'err':result.resumo.alertas>0?'warn':'ok'});
     } else {
-      // Create new process
       proc = {
         id: Date.now(),
         ref,
@@ -1114,10 +1096,10 @@ async function runAnalysis(){
         status,
         resumo: result.resumo,
         grupos: result.grupos,
-        alertas: novaEtapa.alertas,
+        alertas: novaAnalise.alertas,
         documentos: result.documentos||[],
-        etapas: [novaEtapa],
-        log:[{msg:'Etapa 1 (inicial): '+result.resumo.divergencias+' divergência(s) encontrada(s)',time:new Date().toLocaleString('pt-BR'),type:result.resumo.divergencias>0?'err':'ok'}]
+        analises: [novaAnalise],
+        log:[{msg:'Primeira análise ('+docsUsados+'): '+result.resumo.divergencias+' diverg., '+result.resumo.alertas+' alertas',time:new Date().toLocaleString('pt-BR'),type:result.resumo.divergencias>0?'err':result.resumo.alertas>0?'warn':'ok'}]
       };
       processes.unshift(proc);
     }
@@ -1295,52 +1277,142 @@ function openProcess(id){
   document.getElementById('modalSub').textContent=(p.exportador||'')+' · '+p.data;
   document.getElementById('modalDeleteBtn').onclick=function(){deleteProcess(id);};
 
-  var etapas=p.etapas||[];
-  // Fallback: if no etapas, treat current data as etapa 1
-  if(!etapas.length && p.grupos){
-    etapas=[{numero:1,tipo:'inicial',data:p.data,resumo:p.resumo,grupos:p.grupos,alertas:p.alertas||[]}];
+  var analises=p.analises||[];
+  // Backwards compat: if no analises array, create one from existing data
+  if(!analises.length && p.grupos){
+    analises=[{id:p.id,data:p.data,docs:'Documentos iniciais',docTypes:[],resumo:p.resumo,grupos:p.grupos,alertas:p.alertas||[]}];
   }
-
-  var alertTexts=(p.alertas||[]).map(extractAlert);
 
   var html='';
 
-  // Etapas tabs
-  if(etapas.length>0){
-    html+='<div style="display:flex;gap:6px;margin-bottom:20px;flex-wrap:wrap;">';
-    etapas.forEach(function(e){
-      var colors={1:'var(--accent)',2:'var(--ok)',3:'var(--accent)'};
-      var icons={1:'📋',2:'🔄',3:'🏛️'};
-      var labels={inicial:'Análise Inicial',correcao:'Docs Corrigidos',ce_mercante:'Com CE Mercante'};
-      var divCount=(e.resumo&&e.resumo.divergencias)||0;
-      html+='<div onclick="showEtapa('+id+','+e.numero+')" id="etapaTab'+id+'_'+e.numero+'" style="flex:1;min-width:140px;padding:12px 14px;border-radius:8px;border:2px solid '+(colors[e.numero]||'var(--border2)')+';cursor:pointer;background:var(--surface2);">';
-      html+='<div style="font-size:16px;margin-bottom:4px;">'+(icons[e.numero]||'📄')+'</div>';
-      html+='<div style="font-size:11px;font-weight:700;color:'+(colors[e.numero]||'var(--text)')+';font-family:monospace;text-transform:uppercase;">Etapa '+e.numero+'</div>';
-      html+='<div style="font-size:11px;color:var(--text-dim);">'+(labels[e.tipo]||e.tipo)+'</div>';
-      html+='<div style="font-size:11px;margin-top:4px;color:'+(divCount>0?'var(--danger)':'var(--ok)')+';">'+(divCount>0?'✗ '+divCount+' diverg.':'✓ OK')+'</div>';
-      html+='<div style="font-size:10px;color:var(--text-dim);">'+e.data+'</div>';
+  // ── Analysis timeline ──────────────────────────────────────────────
+  if(analises.length){
+    html+='<div class="sec" style="margin-bottom:14px;">Histórico de Análises</div>';
+
+    // Timeline
+    html+='<div style="position:relative;margin-bottom:24px;">';
+    analises.forEach(function(a,idx){
+      var divCount=(a.resumo&&a.resumo.divergencias)||0;
+      var alertCount=(a.resumo&&a.resumo.alertas)||0;
+      var okCount=(a.resumo&&a.resumo.campos_ok)||0;
+      var isLast=idx===analises.length-1;
+      var statusColor=divCount>0?'var(--danger)':alertCount>0?'var(--warn)':'var(--ok)';
+      var statusIcon=divCount>0?'❌':'✓';
+
+      html+='<div style="display:flex;gap:14px;margin-bottom:'+(isLast?'0':'16px')+';position:relative;">';
+      // Timeline dot and line
+      html+='<div style="display:flex;flex-direction:column;align-items:center;flex-shrink:0;">';
+      html+='<div style="width:32px;height:32px;border-radius:50%;background:'+statusColor+';display:flex;align-items:center;justify-content:center;font-size:14px;color:#fff;font-weight:700;flex-shrink:0;">'+statusIcon+'</div>';
+      if(!isLast) html+='<div style="width:2px;flex:1;background:var(--border);margin-top:4px;min-height:20px;"></div>';
       html+='</div>';
+      // Content
+      html+='<div style="flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:14px 16px;cursor:pointer;" data-toggle="analise_'+id+'_'+idx+'">';
+      html+='<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">';
+      html+='<div>';
+      html+='<div style="font-size:13px;font-weight:700;color:var(--text-bright);">Análise '+(idx+1)+(isLast?' <span style="font-size:10px;font-family:monospace;background:var(--accent);color:#fff;padding:2px 6px;border-radius:3px;">ÚLTIMA</span>':'')+'</div>';
+      html+='<div style="font-size:11px;color:var(--text-dim);margin-top:2px;">'+a.data+' · '+a.docs+'</div>';
+      html+='</div>';
+      html+='<div style="display:flex;gap:6px;">';
+      if(okCount) html+='<span style="font-size:10px;padding:3px 8px;border-radius:100px;background:rgba(22,163,74,0.1);color:var(--ok);font-family:monospace;">✓ '+okCount+' OK</span>';
+      if(divCount) html+='<span style="font-size:10px;padding:3px 8px;border-radius:100px;background:rgba(220,38,38,0.1);color:var(--danger);font-family:monospace;">✗ '+divCount+' diverg.</span>';
+      if(alertCount) html+='<span style="font-size:10px;padding:3px 8px;border-radius:100px;background:rgba(217,119,6,0.1);color:var(--warn);font-family:monospace;">⚠ '+alertCount+' alertas</span>';
+      html+='</div></div>';
+
+      // Collapsible divergences detail
+      html+='<div id="analise_'+id+'_'+idx+'" style="display:'+(isLast?'block':'none')+';margin-top:12px;border-top:1px solid var(--border);padding-top:12px;">';
+
+      // Divergences list
+      var divs=[];
+      (a.grupos||[]).forEach(function(g){
+        (g.campos||[]).forEach(function(c){
+          if(c.status==='DIVERGENCIA'||c.status==='AUSENTE') divs.push({grupo:g.titulo,campo:c});
+        });
+      });
+
+      if(!divs.length){
+        html+='<div style="text-align:center;color:var(--ok);font-size:13px;padding:8px 0;">✓ Nenhuma divergência nesta análise</div>';
+      } else {
+        html+='<div style="border:1px solid var(--border);border-radius:6px;overflow:hidden;">';
+        divs.forEach(function(d,di){
+          var c2=d.campo;
+          var ac=c2.status==='DIVERGENCIA'?'#dc2626':'#d97706';
+          html+='<div style="'+(di>0?'border-top:1px solid var(--border);':'')+'">';
+          html+='<div style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:rgba(220,38,38,0.03);border-left:3px solid '+ac+';">';
+          html+='<span style="font-size:10px;color:'+ac+';font-family:monospace;font-weight:700;">'+c2.status+'</span>';
+          html+='<span style="font-size:12px;font-weight:600;color:var(--text-bright);">'+c2.campo+'</span>';
+          html+='<span style="font-size:10px;color:var(--text-dim);margin-left:auto;">'+d.grupo+'</span>';
+          html+='</div>';
+          html+='<div style="display:grid;grid-template-columns:1fr 1fr;">';
+          html+='<div style="padding:6px 12px;border-right:1px solid var(--border);">';
+          html+='<div style="font-size:9px;color:var(--text-dim);margin-bottom:2px;">'+(c2.doc1_label||'')+'</div>';
+          html+='<div style="font-size:12px;color:var(--text);">'+(c2.doc1_valor||'—')+'</div></div>';
+          html+='<div style="padding:6px 12px;border-left:2px solid '+ac+';">';
+          html+='<div style="font-size:9px;color:'+ac+';margin-bottom:2px;">'+(c2.doc2_label||'')+'</div>';
+          html+='<div style="font-size:12px;font-weight:600;color:'+ac+';">'+(c2.doc2_valor||'—')+'</div></div></div>';
+          if(c2.observacao) html+='<div style="padding:4px 12px 6px;font-size:11px;color:var(--warn);font-style:italic;">'+c2.observacao+'</div>';
+          html+='</div>';
+        });
+        html+='</div>';
+      }
+
+      // Alerts
+      var alertTexts=(a.alertas||[]).map(extractAlert).filter(function(x){return x;});
+      if(alertTexts.length){
+        html+='<div style="margin-top:10px;" class="alerts-box"><ul>';
+        alertTexts.forEach(function(at){ html+='<li>'+at+'</li>'; });
+        html+='</ul></div>';
+      }
+
+      html+='</div></div></div>';
     });
     html+='</div>';
 
-    // Etapa detail (show first by default)
-    html+='<div id="etapaDetail'+id+'"></div>';
+    // ── Comparison between last two analyses ─────────────────────────
+    if(analises.length>=2){
+      var prev=analises[analises.length-2];
+      var curr=analises[analises.length-1];
+      var prevDivs={};
+      (prev.grupos||[]).forEach(function(g){ (g.campos||[]).forEach(function(c){ if(c.status==='DIVERGENCIA'||c.status==='AUSENTE') prevDivs[c.campo]=c; }); });
+      var currDivs={};
+      (curr.grupos||[]).forEach(function(g){ (g.campos||[]).forEach(function(c){ if(c.status==='DIVERGENCIA'||c.status==='AUSENTE') currDivs[c.campo]=c; }); });
 
-    // Comparison section (if 2+ etapas)
-    if(etapas.length>=2){
-      html+='<div id="etapaComparison'+id+'" style="margin-top:16px;"></div>';
+      var resolved=Object.keys(prevDivs).filter(function(k){return !currDivs[k];});
+      var remaining=Object.keys(prevDivs).filter(function(k){return !!currDivs[k];});
+      var newIssues=Object.keys(currDivs).filter(function(k){return !prevDivs[k];});
+
+      html+='<div class="sec" style="margin-bottom:14px;">Comparação: Análise '+(analises.length-1)+' → Análise '+analises.length+'</div>';
+      html+='<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:14px;">';
+      html+='<div style="padding:14px;border-radius:8px;background:rgba(22,163,74,0.08);border:1px solid rgba(22,163,74,0.2);text-align:center;">';
+      html+='<div style="font-size:28px;font-weight:800;color:var(--ok);">'+resolved.length+'</div>';
+      html+='<div style="font-size:11px;color:var(--ok);font-weight:600;">✓ Corrigidos</div></div>';
+      html+='<div style="padding:14px;border-radius:8px;background:rgba(220,38,38,0.08);border:1px solid rgba(220,38,38,0.2);text-align:center;">';
+      html+='<div style="font-size:28px;font-weight:800;color:var(--danger);">'+remaining.length+'</div>';
+      html+='<div style="font-size:11px;color:var(--danger);font-weight:600;">✗ Ainda pendentes</div></div>';
+      html+='<div style="padding:14px;border-radius:8px;background:rgba(217,119,6,0.08);border:1px solid rgba(217,119,6,0.2);text-align:center;">';
+      html+='<div style="font-size:28px;font-weight:800;color:var(--warn);">'+newIssues.length+'</div>';
+      html+='<div style="font-size:11px;color:var(--warn);font-weight:600;">⚠ Novos problemas</div></div>';
+      html+='</div>';
+
+      if(resolved.length){
+        resolved.forEach(function(k){ html+='<div style="padding:8px 14px;background:rgba(22,163,74,0.06);border-left:3px solid var(--ok);border-radius:4px;margin-bottom:4px;font-size:13px;color:var(--ok);">✓ '+k+' — corrigido</div>'; });
+      }
+      if(remaining.length){
+        remaining.forEach(function(k){ html+='<div style="padding:8px 14px;background:rgba(220,38,38,0.06);border-left:3px solid var(--danger);border-radius:4px;margin-bottom:4px;font-size:13px;color:var(--danger);">✗ '+k+' — ainda divergente</div>'; });
+      }
+      if(newIssues.length){
+        newIssues.forEach(function(k){ html+='<div style="padding:8px 14px;background:rgba(217,119,6,0.06);border-left:3px solid var(--warn);border-radius:4px;margin-bottom:4px;font-size:13px;color:var(--warn);">⚠ '+k+' — novo problema</div>'; });
+      }
+      html+='<div style="height:16px;"></div>';
     }
   }
 
-  // Alerts
-  if(alertTexts.length){
-    html+='<div class="detail-section"><div class="sec" style="margin-bottom:12px">Alertas</div>';
-    html+='<div class="alerts-box"><ul>';
-    alertTexts.forEach(function(a){ html+='<li>'+a+'</li>'; });
-    html+='</ul></div></div>';
-  }
+  // ── CTA: new analysis ─────────────────────────────────────────────
+  html+='<div style="padding:14px;background:var(--accent-dim);border-radius:8px;border:1px solid rgba(10,45,94,0.15);display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px;">';
+  html+='<div style="font-size:13px;color:var(--accent);">Recebeu novos documentos? Adicione-os e faça uma nova análise.</div>';
+  html+='<button data-ref="'+p.ref+'" class="btn btn-primary btn-sm" style="flex-shrink:0;">+ Nova Análise</button>';
+  html+='</div>';
 
-  // Log
+  // ── Log ─────────────────────────────────────────────────────────
   html+='<div class="detail-section"><div class="sec" style="margin-bottom:12px">Log do Processo</div>';
   html+='<div class="log-list">';
   (p.log||[]).forEach(function(l){
@@ -1354,160 +1426,32 @@ function openProcess(id){
   html+='<button class="btn btn-ghost btn-sm" onclick="addLog('+id+')">+ Adicionar</button>';
   html+='</div></div>';
 
-  // Button to start new etapa
-  var nextEtapa = Math.min((etapas.length>0?etapas[etapas.length-1].numero:0)+1,3);
-  if(nextEtapa<=3){
-    var nextLabels={2:'Etapa 2 — Analisar Docs Corrigidos',3:'Etapa 3 — Análise com CE Mercante'};
-    html+='<div style="margin-top:16px;padding:14px;background:var(--accent-dim);border-radius:8px;border:1px solid rgba(10,45,94,0.15);display:flex;align-items:center;justify-content:space-between;gap:12px;">';
-    html+='<div style="font-size:13px;color:var(--accent);">Pronto para a próxima etapa?</div>';
-    html+='<button data-ref="'+p.ref+'" data-etapa="'+nextEtapa+'" class="btn btn-primary btn-sm">'+(nextLabels[nextEtapa]||'Nova Etapa')+'</button>';
-    html+='</div>';
-  }
-
   document.getElementById('modalBody').innerHTML=html;
-  
-  // Event delegation for data-startnext buttons
-  document.getElementById('modalBody').onclick = function(e){
-    var btn = e.target.closest('[data-startnext]');
-    if(btn){
-      var parts = btn.getAttribute('data-startnext').split('|');
-    html+='<button data-ref="'+p.ref+'" data-etapa="'+nextEtapa+'" class="btn btn-primary btn-sm">'+(nextLabels[nextEtapa]||'Nova Etapa')+'</button>';
+
+  // Event delegation for Nova Análise button
+  document.getElementById('modalBody').onclick=function(e){
+    // Handle toggle analise
+    var tog=e.target.closest('[data-toggle]');
+    if(tog){ toggleAnalise(tog.getAttribute('data-toggle')); return; }
+    var btn=e.target.closest('[data-ref]');
+    if(btn&&btn.className.includes('btn')){
+      var ref2=btn.getAttribute('data-ref');
+      document.getElementById('modalBg').classList.remove('show');
+      showPage('conferencia');
+      setTimeout(function(){
+        var refEl=document.getElementById('procRef');
+        if(refEl){ refEl.value=ref2; autoFillProcess(); }
+        showToast('Processo '+ref2+' carregado — adicione os novos documentos','ok');
+      },200);
     }
   };
-  
+
   document.getElementById('modalBg').classList.add('show');
-
-  // Show first etapa by default
-  if(etapas.length>0) showEtapa(id, etapas[0].numero);
 }
 
-function showEtapa(procId, etapaNum){
-  var procs=getProcesses();
-  var p=procs.find(function(x){return x.id===procId;});
-  if(!p) return;
-  var etapas=p.etapas||[];
-  if(!etapas.length && p.grupos) etapas=[{numero:1,tipo:'inicial',data:p.data,resumo:p.resumo,grupos:p.grupos,alertas:p.alertas||[]}];
-  var e=etapas.find(function(x){return x.numero===etapaNum;});
-  if(!e) return;
-
-  // Highlight active tab
-  etapas.forEach(function(et){
-    var tab=document.getElementById('etapaTab'+procId+'_'+et.numero);
-    if(tab) tab.style.opacity = et.numero===etapaNum?'1':'0.6';
-  });
-
-  var detail=document.getElementById('etapaDetail'+procId);
-  if(!detail) return;
-
-  var html='<div class="sec" style="margin-bottom:12px;">Etapa '+etapaNum+' — Divergências</div>';
-
-  var divs=[];
-  (e.grupos||[]).forEach(function(g){
-    (g.campos||[]).forEach(function(c){
-      if(c.status==='DIVERGENCIA'||c.status==='AUSENTE') divs.push({grupo:g.titulo,campo:c});
-    });
-  });
-
-  if(!divs.length){
-    html+='<div style="padding:16px;text-align:center;color:var(--ok);font-size:14px;">✓ Nenhuma divergência nesta etapa!</div>';
-  } else {
-    html+='<div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;">';
-    divs.forEach(function(d,i){
-      var c=d.campo;
-      var ac=c.status==='DIVERGENCIA'?'#dc2626':'#d97706';
-      var bt=i>0?'border-top:1px solid var(--border);':'';
-      html+='<div style="'+bt+'background:var(--surface);">';
-      html+='<div style="display:flex;align-items:center;gap:8px;padding:10px 16px;background:rgba(220,38,38,0.04);border-left:3px solid '+ac+';">';
-      html+='<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:3px;color:'+ac+';font-family:monospace;background:rgba(220,38,38,0.08);">'+c.status+'</span>';
-      html+='<span style="font-size:13px;font-weight:600;color:var(--text-bright);">'+c.campo+'</span>';
-      html+='<span style="font-size:10px;color:var(--text-dim);margin-left:auto;">'+d.grupo+'</span>';
-      html+='</div>';
-      html+='<div style="display:grid;grid-template-columns:1fr 1fr;">';
-      html+='<div style="padding:8px 16px;border-right:1px solid var(--border);">';
-      html+='<div style="font-size:9px;color:var(--text-dim);font-family:monospace;margin-bottom:2px;">'+(c.doc1_label||'')+'</div>';
-      html+='<div style="font-size:13px;color:var(--text);">'+(c.doc1_valor||'—')+'</div></div>';
-      html+='<div style="padding:8px 16px;border-left:2px solid '+ac+';">';
-      html+='<div style="font-size:9px;color:'+ac+';font-family:monospace;margin-bottom:2px;">'+(c.doc2_label||'')+'</div>';
-      html+='<div style="font-size:13px;font-weight:600;color:'+ac+';">'+(c.doc2_valor||'—')+'</div></div></div>';
-      if(c.observacao) html+='<div style="padding:6px 16px 8px;font-size:11px;color:var(--warn);font-style:italic;">'+c.observacao+'</div>';
-      html+='</div>';
-    });
-    html+='</div>';
-  }
-
-  // Show comparison if etapa 2 or 3
-  if(etapaNum>=2){
-    var prevEtapa = etapas.find(function(x){return x.numero===etapaNum-1;});
-    if(prevEtapa){
-      var prevDivs={};
-      (prevEtapa.grupos||[]).forEach(function(g){
-        (g.campos||[]).forEach(function(c){
-          if(c.status==='DIVERGENCIA'||c.status==='AUSENTE') prevDivs[c.campo]=c;
-        });
-      });
-      var currDivs={};
-      (e.grupos||[]).forEach(function(g){
-        (g.campos||[]).forEach(function(c){
-          if(c.status==='DIVERGENCIA'||c.status==='AUSENTE') currDivs[c.campo]=c;
-        });
-      });
-
-      var resolved=Object.keys(prevDivs).filter(function(k){return !currDivs[k];});
-      var remaining=Object.keys(prevDivs).filter(function(k){return !!currDivs[k];});
-      var newIssues=Object.keys(currDivs).filter(function(k){return !prevDivs[k];});
-
-      html+='<div style="margin-top:16px;">';
-      html+='<div class="sec" style="margin-bottom:12px;">Comparação com Etapa '+(etapaNum-1)+'</div>';
-      html+='<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:12px;">';
-      html+='<div style="padding:14px;border-radius:8px;background:rgba(22,163,74,0.08);border:1px solid rgba(22,163,74,0.2);text-align:center;">';
-      html+='<div style="font-size:24px;font-weight:700;color:var(--ok);">'+resolved.length+'</div>';
-      html+='<div style="font-size:11px;color:var(--ok);">✓ Corrigidos</div></div>';
-      html+='<div style="padding:14px;border-radius:8px;background:rgba(220,38,38,0.08);border:1px solid rgba(220,38,38,0.2);text-align:center;">';
-      html+='<div style="font-size:24px;font-weight:700;color:var(--danger);">'+remaining.length+'</div>';
-      html+='<div style="font-size:11px;color:var(--danger);">✗ Ainda pendentes</div></div>';
-      html+='<div style="padding:14px;border-radius:8px;background:rgba(217,119,6,0.08);border:1px solid rgba(217,119,6,0.2);text-align:center;">';
-      html+='<div style="font-size:24px;font-weight:700;color:var(--warn);">'+newIssues.length+'</div>';
-      html+='<div style="font-size:11px;color:var(--warn);">⚠ Novos problemas</div></div>';
-      html+='</div>';
-
-      if(resolved.length){
-        html+='<div style="margin-bottom:8px;">';
-        resolved.forEach(function(k){
-          html+='<div style="padding:8px 14px;background:rgba(22,163,74,0.06);border-left:3px solid var(--ok);border-radius:4px;margin-bottom:4px;font-size:13px;color:var(--ok);">✓ '+k+' — corrigido</div>';
-        });
-        html+='</div>';
-      }
-      if(remaining.length){
-        html+='<div style="margin-bottom:8px;">';
-        remaining.forEach(function(k){
-          html+='<div style="padding:8px 14px;background:rgba(220,38,38,0.06);border-left:3px solid var(--danger);border-radius:4px;margin-bottom:4px;font-size:13px;color:var(--danger);">✗ '+k+' — ainda divergente</div>';
-        });
-        html+='</div>';
-      }
-      if(newIssues.length){
-        html+='<div>';
-        newIssues.forEach(function(k){
-          html+='<div style="padding:8px 14px;background:rgba(217,119,6,0.06);border-left:3px solid var(--warn);border-radius:4px;margin-bottom:4px;font-size:13px;color:var(--warn);">⚠ '+k+' — novo problema</div>';
-        });
-        html+='</div>';
-      }
-      html+='</div>';
-    }
-  }
-
-  detail.innerHTML=html;
-}
-
-function startNextEtapa(ref, etapaNum){
-  document.getElementById('modalBg').classList.remove('show');
-  showPage('conferencia');
-  setTimeout(function(){
-    var refEl=document.getElementById('procRef');
-    var sel=document.getElementById('etapaSelect');
-    if(refEl) refEl.value=ref;
-    if(sel){ sel.value=String(etapaNum); updateEtapaHint(); }
-    showToast('Processo '+ref+' carregado — Etapa '+etapaNum,'ok');
-  }, 200);
+function toggleAnalise(id){
+  var el=document.getElementById(id);
+  if(el) el.style.display=el.style.display==='none'?'block':'none';
 }
 
 
@@ -1987,41 +1931,34 @@ function copyOneDivPT(i){ var divs=getDivergencias(); copySectionText([divs[i]],
 function copyOneDivEN(i){ var divs=getDivergencias(); copySectionText([divs[i]],'','en'); }
 function emailOneDiv(i){ var divs=getDivergencias(); emailSection([divs[i]],'docs',''); }
 
-// ─── ETAPA SYSTEM ────────────────────────────────────────────────────
-var ETAPA_HINTS = {
-  '1': {icon:'📋', text:'Etapa 1 — Análise Inicial: Envie os documentos originais: CI, PL, BL e PI.'},
-  '2': {icon:'🔄', text:'Etapa 2 — Docs Corrigidos: Envie os documentos corrigidos pelo fornecedor/agente. O sistema vai comparar com a Etapa 1.'},
-  '3': {icon:'🏛️', text:'Etapa 3 — CE Mercante: Envie todos os documentos + o CE Mercante. O sistema fará a conferência final.'}
-};
-
-function updateEtapaHint(){
-  var sel = document.getElementById('etapaSelect');
-  var hint = document.getElementById('etapaHint');
-  var txt = document.getElementById('etapaHintText');
-  if(!sel||!hint||!txt) return;
-  var v = sel.value||'1';
-  var h = ETAPA_HINTS[v]||ETAPA_HINTS['1'];
-  txt.textContent = h.text;
-  var colors = {'1':'rgba(10,45,94,0.08)','2':'rgba(22,163,74,0.08)','3':'rgba(10,45,94,0.08)'};
-  hint.style.background = colors[v]||colors['1'];
-}
-
+// ─── ANALYSIS SYSTEM ─────────────────────────────────────────────────
 function autoFillProcess(){
   var ref = document.getElementById('procRef').value.trim();
-  if(!ref) return;
+  var statusEl = document.getElementById('procStatus');
+  var statusTxt = document.getElementById('procStatusText');
+  if(!ref){ if(statusEl) statusEl.style.display='none'; return; }
   var procs = getProcesses();
   var existing = procs.find(function(p){ return p.ref===ref; });
-  if(!existing) return;
+  if(!existing){ if(statusEl) statusEl.style.display='none'; return; }
   // Auto fill exportador
   var expEl = document.getElementById('procExp');
   if(expEl && !expEl.value && existing.exportador) expEl.value = existing.exportador;
-  // Suggest next etapa
-  var etapas = existing.etapas||[];
-  var maxEtapa = etapas.reduce(function(m,e){ return Math.max(m,e.numero); }, 0);
-  var nextEtapa = Math.min(maxEtapa+1, 3);
-  var sel = document.getElementById('etapaSelect');
-  if(sel) { sel.value = String(nextEtapa); updateEtapaHint(); }
-  showToast('Processo '+ref+' encontrado — sugerindo Etapa '+nextEtapa,'ok');
+  // Show process status
+  var analises = existing.analises||[];
+  var lastAnalise = analises.length ? analises[analises.length-1] : null;
+  if(statusEl && statusTxt){
+    var msg = '📁 Processo existente — '+analises.length+' análise(s) registrada(s).';
+    if(lastAnalise){
+      msg += ' Última: '+lastAnalise.data+' ('+lastAnalise.docs+')';
+      var divCount = lastAnalise.resumo ? lastAnalise.resumo.divergencias : 0;
+      msg += divCount>0 ? ' — ⚠ '+divCount+' divergência(s) pendente(s).' : ' — ✓ Sem divergências.';
+    }
+    msg += ' Adicione os novos documentos recebidos e analise novamente.';
+    statusTxt.textContent = msg;
+    statusEl.style.display = 'flex';
+    statusEl.style.background = 'var(--accent-dim)';
+  }
+  showToast('Processo '+ref+' encontrado — '+analises.length+' análise(s)','ok');
 }
 
 // ─── TOAST ───────────────────────────────────────────────────────────
