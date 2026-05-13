@@ -997,7 +997,7 @@ async function runAnalysis(){
 
     const docList=[...new Set(Object.values(uploadedFiles).map(f=>DOC_LBL[f.type]))].join(', ');
         const prompt = 'Retorne APENAS JSON puro sem markdown sem texto extra. Voce e especialista em conferencia documental de importacao de pneus da Asia para o Brasil. Analise os documentos: ' + docList + '. '
-      + 'JSON obrigatorio: {"resumo":{"campos_ok":0,"divergencias":0,"alertas":0},"grupos":[{"titulo":"Identificacao","campos":[{"campo":"campo","doc1_label":"doc","doc1_valor":"val","doc2_label":"doc","doc2_valor":"val","status":"OK","observacao":null}]}],"alertas":["string"],"documentos":[{"tipo":"tipo","dados":{"campo":"valor"}}]}. '
+      + 'Retorne JSON com esta estrutura exata: {"resumo":{"campos_ok":0,"divergencias":0,"alertas":0},"grupos":[{"titulo":"string","campos":[{"campo":"string","doc1_label":"string","doc1_valor":"string","doc2_label":"string","doc2_valor":"string","status":"OK","observacao":null}]}],"alertas":["string"]}. Nao inclua o campo documentos para economizar tokens. '
       + 'IMPORTANTE: alertas deve ser array de STRINGS SIMPLES, nunca objetos. '
       + 'REGRA FUNDAMENTAL DE CONFERENCIA: Cada campo deve ter o MESMO valor em TODOS os documentos onde aparece. '
       + 'Exemplo: se Peso Bruto aparece na Invoice como 28.000,00 KGS, no Packing List e no BL deve ser exatamente 28.000,00 KGS. '
@@ -1025,7 +1025,7 @@ async function runAnalysis(){
     const resp = await fetch('https://api.anthropic.com/v1/messages',{
       method:'POST',
       headers:{'Content-Type':'application/json','x-api-key':_apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
-      body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:8000,messages:[{role:'user',content}]})
+      body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:16000,messages:[{role:'user',content}]})
     });
 
     if(!resp.ok){
@@ -1044,8 +1044,10 @@ async function runAnalysis(){
       result=JSON.parse(clean);
     } catch(e1){
       const m=raw.match(/\{[\s\S]*\}/);
-      if(!m) throw new Error('A IA nao retornou JSON valido. Tente novamente.');
-      try{ result=JSON.parse(m[0]); } catch(e2){ throw new Error('Erro ao interpretar resposta. Tente novamente.'); }
+      if(!m) throw new Error('A IA nao retornou JSON. Resposta: '+raw.substring(0,200));
+      try{ result=JSON.parse(m[0]); } catch(e2){ 
+        throw new Error('JSON invalido ('+e2.message+'). Inicio: '+raw.substring(0,150));
+      }
     }
     if(!result.grupos) throw new Error('Resposta incompleta. Tente novamente.');
 
@@ -1067,7 +1069,7 @@ async function runAnalysis(){
       resumo: result.resumo,
       grupos: result.grupos,
       alertas: (result.alertas||[]).map(extractAlert),
-      documentos: result.documentos,
+      documentos: result.documentos||[],
       log:[{msg:`Conferência realizada — ${Object.keys(uploadedFiles).length} documentos analisados`,time:new Date().toLocaleString('pt-BR'),type:'ok'}]
     };
     if(result.resumo.divergencias>0) proc.log.push({msg:`${result.resumo.divergencias} divergência(s) encontrada(s)`,time:new Date().toLocaleString('pt-BR'),type:'err'});
