@@ -768,25 +768,25 @@ const DOC_PT = {invoice:'Commercial Invoice (CI)',packing:'Packing List (PL)',bl
 
 function guessType(name){
   var b=name.toLowerCase().replace(/\.[a-z]{2,4}$/,'');
-  // separator = _, -, space, (, ), start or end
-  var sep='(_|^|-| |\\(|\\))';
-  var re=function(pat){ return new RegExp(pat).test(b); };
-  // BL
-  if(re(sep+'(bl|hbl|mbl)'+sep)||re(sep+'(bl|hbl|mbl)$')) return 'bl';
-  if(b.includes('lading')||b.includes('bill of lading')) return 'bl';
-  // PI - before CI
-  if(re(sep+'pi'+sep)||re(sep+'pi$')||re('^pi'+sep)) return 'proforma';
-  if(b.includes('proforma')||b.includes('pro_forma')||b.includes('sales contract')||b.includes('sales_contract')) return 'proforma';
-  // CI - also handle typo Cl (capital I vs lowercase L)
-  if(re(sep+'(ci|cl)'+sep)||re(sep+'(ci|cl)$')||re('^(ci|cl)'+sep)) return 'invoice';
-  if(b.includes('commercial invoice')||b.includes('commercial_invoice')) return 'invoice';
-  if(re(sep+'invoice'+sep)||re(sep+'invoice$')) return 'invoice';
+  var sep='(_|^|-| |\\(|\\)|\\.)'
+  var m=function(pat){return new RegExp(pat).test(b);};
+  // BL — OBL, HBL, MBL, BL, Draft BL
+  if(m(sep+'(obl|hbl|mbl|bl)'+sep)||m(sep+'(obl|hbl|mbl|bl)$')||m('^(obl|hbl|mbl|bl)'+sep)) return 'bl';
+  if(b.includes('bill of lading')||b.includes('bill_of_lading')||b.includes('lading')) return 'bl';
+  if(m('draft.{0,5}bl')||m('bl.{0,5}draft')) return 'bl';
+  // PI — before CI
+  if(m(sep+'pi'+sep)||m(sep+'pi$')||m('^pi'+sep)) return 'proforma';
+  if(b.includes('proforma')||b.includes('pro_forma')||b.includes('sales_contract')||b.includes('sales contract')||b.includes('sales_confirm')) return 'proforma';
+  // CI — including typo Cl
+  if(m(sep+'(ci|cl)'+sep)||m(sep+'(ci|cl)$')||m('^(ci|cl)'+sep)) return 'invoice';
+  if(b.includes('commercial invoice')||b.includes('commercial_invoice')||b.includes('_invoice')||b.includes('invoice_')) return 'invoice';
+  if(m(sep+'invoice'+sep)||m(sep+'invoice$')) return 'invoice';
   // PL
-  if(re(sep+'pl'+sep)||re(sep+'pl$')||re('^pl'+sep)) return 'packing';
+  if(m(sep+'pl'+sep)||m(sep+'pl$')||m('^pl'+sep)) return 'packing';
   if(b.includes('packing list')||b.includes('packing_list')||b.includes('packing')) return 'packing';
-  // CE
-  if(b.includes('ce_mercante')||b.includes('cemercante')||b.includes('ce-mercante')||b.includes('ce mercante')) return 'ce';
-  if((re(sep+'ce'+sep)||re(sep+'ce$'))&&!b.includes('invoice')&&!b.includes('price')) return 'ce';
+  // CE Mercante
+  if(b.includes('ce_mercante')||b.includes('cemercante')||b.includes('ce-mercante')||b.includes('ce mercante')||b.includes('ce_mer')) return 'ce';
+  if((m(sep+'ce'+sep)||m(sep+'ce$')||m('^ce'+sep))&&!b.includes('invoice')&&!b.includes('price')&&!b.includes('service')) return 'ce';
   // Fallback
   if(b.includes('invoice')) return 'invoice';
   return 'outros';
