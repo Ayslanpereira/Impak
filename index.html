@@ -763,17 +763,23 @@ const DOC_KW = {
   proforma:['proforma','sales contract','pi_','_pi','pi ','_sc','_sc_'],
 };
 const DOC_ICON = {invoice:'📄',packing:'📦',bl:'🚢',proforma:'📋',outros:'🗂️'};
-const DOC_LBL = {invoice:'COMMERCIAL INVOICE (CI)',packing:'PACKING LIST (PL)',bl:'BILL OF LADING (BL)',proforma:'PROFORMA INVOICE (PI)',ce:'CE MERCANTE',outros:'OUTRO DOCUMENTO'};
-const DOC_PT = {invoice:'Commercial Invoice (CI)',packing:'Packing List (PL)',bl:'Bill of Lading (BL)',proforma:'Proforma Invoice (PI)',ce:'CE Mercante',outros:'Outro Documento'};
+const DOC_LBL = {invoice:'COMMERCIAL INVOICE (CI)',packing:'PACKING LIST (PL)',bl:'BILL OF LADING (BL)',bl_draft:'DRAFT BL',bl_original:'BL ORIGINAL',proforma:'PROFORMA INVOICE (PI)',ce:'CE MERCANTE',outros:'OUTRO DOCUMENTO'};
+const DOC_PT = {invoice:'Commercial Invoice (CI)',packing:'Packing List (PL)',bl:'Bill of Lading (BL)',bl_draft:'Draft BL',bl_original:'BL Original',proforma:'Proforma Invoice (PI)',ce:'CE Mercante',outros:'Outro Documento'};
 
 function guessType(name){
   var b=name.toLowerCase().replace(/\.[a-z]{2,4}$/,'');
   var sep='(_|^|-| |\\(|\\)|\\.)'
   var m=function(pat){return new RegExp(pat).test(b);};
   // BL — OBL, HBL, MBL, BL, Draft BL
-  if(m(sep+'(obl|hbl|mbl|bl)'+sep)||m(sep+'(obl|hbl|mbl|bl)$')||m('^(obl|hbl|mbl|bl)'+sep)) return 'bl';
+  // Draft BL
+  if(m('draft.{0,5}(bl|hbl|obl|mbl)')||m('(bl|hbl|obl|mbl).{0,5}draft')) return 'bl_draft';
+  if(b.includes('draft')&&(b.includes('bl')||b.includes('lading'))) return 'bl_draft';
+  // BL Original
+  if(m(sep+'obl'+sep)||m(sep+'obl$')||m('^obl'+sep)) return 'bl_original';
+  if(b.includes('original')&&(b.includes('bl')||b.includes('lading'))) return 'bl_original';
+  // Generic BL
+  if(m(sep+'(hbl|mbl|bl)'+sep)||m(sep+'(hbl|mbl|bl)$')||m('^(hbl|mbl|bl)'+sep)) return 'bl';
   if(b.includes('bill of lading')||b.includes('bill_of_lading')||b.includes('lading')) return 'bl';
-  if(m('draft.{0,5}bl')||m('bl.{0,5}draft')) return 'bl';
   // PI — before CI
   if(m(sep+'pi'+sep)||m(sep+'pi$')||m('^pi'+sep)) return 'proforma';
   if(b.includes('proforma')||b.includes('pro_forma')||b.includes('sales_contract')||b.includes('sales contract')||b.includes('sales_confirm')) return 'proforma';
@@ -900,12 +906,14 @@ function renderChips(){
     var isOther=type==='outros';
     var short=n.length>45?n.slice(0,43)+'...':n;
     var opts=[
-      ['invoice','CI - Commercial Invoice'],
-      ['packing','PL - Packing List'],
-      ['bl','BL - Bill of Lading'],
-      ['proforma','PI - Proforma Invoice'],
-      ['ce','CE - CE Mercante'],
-      ['outros','Outro Documento']
+      ['invoice','📄 CI - Commercial Invoice'],
+      ['packing','📦 PL - Packing List'],
+      ['bl_draft','🚢 Draft BL'],
+      ['bl_original','⚓ BL Original'],
+      ['bl','🚢 BL - Bill of Lading (genérico)'],
+      ['proforma','📋 PI - Proforma Invoice'],
+      ['ce','🏛️ CE - CE Mercante'],
+      ['outros','🗂️ Outro Documento']
     ].map(function(o){
       return '<option value="'+o[0]+'"'+(o[0]===type?' selected':'')+'>'+o[1]+'</option>';
     }).join('');
