@@ -1013,7 +1013,7 @@ async function runAnalysis(){
       + 'REGRAS FUNDAMENTAIS DE COMPARACAO: '
       + '1. NUMEROS: Normalize antes de comparar. 17.548,00 = 17.548,000 = 17548 = 17,548.00. So marque DIVERGENCIA se o numero for realmente diferente. '
       + '2. TRANSBORDO: Navio pode diferir entre CI/PL e BL quando ha transbordo/baldeacao. Verifique se ha indicacao antes de marcar DIVERGENCIA. '
-      + '3. DATAS: 2026-03-16 = 16/03/2026 = 16-Mar-2026. Nao marque DIVERGENCIA por formato diferente. '
+      + '3. DATAS E FORMATOS DE DATA: Antes de comparar qualquer data, normalize para o mesmo formato. Todos estes representam a mesma data: 2026-03-23 = 23/03/2026 = 29/03/2026 nao seria igual mas 23/03/2026 = 2026-03-23 = 23-Mar-2026 = March 23 2026 = 23.03.2026. Para verificar se duas datas sao iguais, extraia dia, mes e ano e compare os numeros. Se dia+mes+ano forem iguais = OK independente do formato. So marque DIVERGENCIA se o dia, mes ou ano forem realmente diferentes. '
       + '4. ABREVIACOES: HO CHI MINH = HO CHI MINH PORT. NAVEGANTES = NAVEGANTES,BRAZIL. Mesmos valores com abreviacoes diferentes = OK. '
       + '5. DATA DO CE MERCANTE: A data do CE Mercante e SEMPRE diferente da data da CI e PL - isso e NORMAL e NAO e divergencia. O CE e emitido apos o embarque e reflete o encerramento do manifesto. A data do CE deve ser comparada APENAS com a data de embarque (on board date) do BL. Se a data do CE bater com a data de embarque do BL = OK. '
       + '6. CONSIGNATARIO NO BL E CE: No BL e no CE Mercante o consignatario e SEMPRE o importador/despachante. Na CI e PL pode aparecer um BUYER (encomendante/comprador final) que e uma empresa diferente do importador. Isso e NORMAL e NAO e divergencia. NAO compare o consignatario/notify do BL e CE com o buyer/encomendante da CI e PL - sao papeis diferentes. O importador e quem despacha a mercadoria, o buyer e quem comprou. '
@@ -1768,7 +1768,7 @@ function buildMsgText(type, lang, ref, divs, alerts) {
       msg = 'Estimado Agente de Carga,\n\nEstamos revisando el borrador del Bill of Lading para el proceso *' + ref + '*:\n\n';
       divs.slice(0,5).forEach(function(d,i){ msg += (i+1)+'. '+d.campo+'\n   Actual: '+(d.doc1_valor||'N/A')+'\n   Debe ser: '+(d.doc2_valor||'N/A')+'\n\n'; });
       msg += '\nPor favor, enviar el BL corregido.\n\nAtentamente,\nIMPAK Comercial e Importadora Ltda\n' + date;
-    }
+    }A
   } else if(type === 'supplier') {
     if(lang === 'pt') {
       msg = 'Prezado Fornecedor,\n\nEm relacao ao processo *' + ref + '*, identificamos divergencias nos documentos (CI/PL/PI) que precisam ser corrigidas:\n\n';
