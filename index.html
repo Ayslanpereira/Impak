@@ -1768,7 +1768,7 @@ function buildMsgText(type, lang, ref, divs, alerts) {
       msg = 'Estimado Agente de Carga,\n\nEstamos revisando el borrador del Bill of Lading para el proceso *' + ref + '*:\n\n';
       divs.slice(0,5).forEach(function(d,i){ msg += (i+1)+'. '+d.campo+'\n   Actual: '+(d.doc1_valor||'N/A')+'\n   Debe ser: '+(d.doc2_valor||'N/A')+'\n\n'; });
       msg += '\nPor favor, enviar el BL corregido.\n\nAtentamente,\nIMPAK Comercial e Importadora Ltda\n' + date;
-    }A
+    }
   } else if(type === 'supplier') {
     if(lang === 'pt') {
       msg = 'Prezado Fornecedor,\n\nEm relacao ao processo *' + ref + '*, identificamos divergencias nos documentos (CI/PL/PI) que precisam ser corrigidas:\n\n';
