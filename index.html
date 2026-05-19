@@ -608,10 +608,19 @@ textarea.field-input{resize:vertical;min-height:80px;}
   <!-- Step 1: Processo info -->
   <div class="sec">01 — Identificação do Processo</div>
   <div class="card" style="margin-bottom:24px;">
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;flex-wrap:wrap;">
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:16px;flex-wrap:wrap;">
       <div class="field-group" style="margin:0">
         <label class="field-label">Referência do Processo *</label>
         <input class="field-input" id="procRef" placeholder="Ex: UD26-009" oninput="checkReady();autoFillProcess();">
+      </div>
+      <div class="field-group" style="margin:0">
+        <label class="field-label">Etapa</label>
+        <select class="field-input" id="etapaSelect" onchange="updateEtapaHint()">
+          <option value="1">1 — PI / Sales Contract + PL</option>
+          <option value="2">2 — Draft BL + demais docs</option>
+          <option value="3">3 — BL Original</option>
+          <option value="4">4 — CE Mercante (análise final)</option>
+        </select>
       </div>
       <div class="field-group" style="margin:0">
         <label class="field-label">Exportador</label>
@@ -624,6 +633,10 @@ textarea.field-input{resize:vertical;min-height:80px;}
     </div>
     <div id="procStatus" style="display:none;margin-top:12px;padding:10px 14px;border-radius:6px;font-size:12px;background:var(--accent-dim);color:var(--accent);border:1px solid rgba(10,45,94,0.15);">
       <span id="procStatusText"></span>
+    </div>
+    <div id="etapaHint" style="margin-top:10px;padding:10px 14px;border-radius:6px;font-size:12px;border:1px solid rgba(10,45,94,0.15);background:var(--accent-dim);color:var(--accent);display:flex;align-items:center;gap:8px;">
+      <span id="etapaHintIcon">📋</span>
+      <span id="etapaHintText">Envie a PI/Sales Contract e o Packing List para a análise inicial.</span>
     </div>
   </div>
 
@@ -1007,94 +1020,51 @@ async function runAnalysis(){
     setStep(2);
 
     const docList=[...new Set(Object.values(uploadedFiles).map(f=>DOC_LBL[f.type]))].join(', ');
-    const prompt = 'Retorne APENAS JSON puro sem markdown sem texto extra. Voce e especialista em conferencia documental de importacao de pneus da Asia para o Brasil. '
-      + 'Analise os documentos enviados: ' + docList + '. '
-      + 'Retorne JSON com esta estrutura: {"resumo":{"campos_ok":0,"divergencias":0,"alertas":0},"grupos":[{"titulo":"string","campos":[{"campo":"string","doc1_label":"string","doc1_valor":"string","doc2_label":"string","doc2_valor":"string","status":"OK","observacao":null}]}],"alertas":["string"]}. '
-      + 'alertas deve ser array de STRINGS SIMPLES. '
-      + '=== PASSO 01 — CAMPOS OBRIGATORIOS POR DOCUMENTO === '
-      + 'Verifique se cada documento presente contem seus campos obrigatorios. Se um campo obrigatorio estiver AUSENTE, adicione um ALERTA descrevendo o campo e o documento. '
-      + 'COMMERCIAL INVOICE (CI) campos obrigatorios: '
-      + '(1) Nome e endereco completos do exportador. '
-      + '(2) Nome e endereco completos do importador. '
-      + '(3) Dados do encomendante/adquirente (alertar se ausente e houver indicacao de encomendante). '
-      + '(4) Forma e moeda de pagamento. '
-      + '(5) Porto de origem. '
-      + '(6) Porto de destino. '
-      + '(7) Descricao detalhada dos itens. '
-      + '(8) Marca, numeracao e referencia dos volumes. '
-      + '(9) Quantidade e especie dos volumes. '
-      + '(10) Valores unitarios e totais. '
-      + '(11) Informacao sobre descontos ou reducoes concedidas (alertar apenas se houver indicacao de desconto sem valor). '
-      + '(12) Peso bruto e peso liquido. '
-      + '(13) Incoterm. '
-      + '(14) Pais de origem. '
-      + '(15) Pais de aquisicao. '
-      + '(16) Pais de procedencia. '
-      + '(17) Dados bancarios do exportador (nome banco, conta, SWIFT). '
-      + '(18) Valor do frete internacional — REGRA CRITICA: se o Incoterm for DIFERENTE de FOB, o valor do frete DEVE estar na CI. Se nao estiver, gere ALERTA CRITICO: "ALERTA CRITICO: Incoterm [X] exige valor do frete na CI mas nao foi encontrado". '
-      + 'PACKING LIST (PL) campos obrigatorios: '
-      + '(1) Dados completos do importador. '
-      + '(2) Dados do encomendante (quando houver). '
-      + '(3) Porto de origem. '
-      + '(4) Porto de destino. '
-      + '(5) Descricao dos itens. '
-      + '(6) Quantidade e especie dos volumes. '
-      + '(7) Pesos unitarios e pesos totais. '
-      + '(8) Peso bruto e peso liquido. '
-      + '(9) Descricao do produto (ex: MEDIUM RADIAL TRUCK TIRE). '
-      + '(10) Pais de origem. '
-      + '(11) Pais de aquisicao. '
-      + '(12) Endereco do fabricante. '
-      + '(13) Marca e numeracao dos volumes. '
-      + '(14) Numero do container, BL e lacre — ESTE CAMPO E OPCIONAL no PL, nao alertar se ausente. '
-      + 'BILL OF LADING (BL) campos obrigatorios: '
-      + '(1) Shipper (nome e endereco). '
-      + '(2) Notify party (nome e endereco). '
-      + '(3) Consignee (nome e endereco). '
-      + '(4) Porto de origem. '
-      + '(5) Porto de destino. '
-      + '(6) Peso (peso bruto). '
-      + '(7) Quantidade (numero de pecas/volumes). '
-      + '(8) NCM (codigo da mercadoria). '
-      + '(9) Descricao do produto. '
-      + '(10) Free time. '
-      + '(11) Valor do frete. '
-      + '(12) Informacao se frete e Prepaid ou Collect. '
-      + '(13) Numero do container e numero do lacre. '
-      + '(14) Informacao sobre utilizacao de madeira (wooden package / packing materials). '
-      + '=== PASSO 02 — CRUZAMENTO ENTRE DOCUMENTOS === '
-      + 'Apos verificar campos obrigatorios, cruze as informacoes entre todos os documentos. Cada campo que aparece em mais de um documento deve ter o MESMO valor. Use os grupos abaixo: '
-      + 'GRUPO Identificacao: numero invoice (CI=PL=CE), numero BL (BL=PL=CI=CE), referencia PO, data emissao CI e PL (devem ser iguais entre si). '
-      + 'GRUPO Importador: nome e CNPJ do importador (igual em todos os documentos). '
-      + 'GRUPO Comprador Final: nome e CNPJ do encomendante/buyer (igual na CI e PL — pode ser diferente do importador, isso e normal). '
-      + 'GRUPO Exportador e Fabricante: nome e endereco do shipper/exportador (igual em todos), notify party, endereco do fabricante. '
-      + 'GRUPO Mercadoria: descricao do produto, marca, medida, modelo, PR, LI/SR, quantidade total (CI=PL=BL=CE). '
-      + 'GRUPO Valores: preco unitario, valor total (CI=PI), incoterm (igual em todos), condicoes de pagamento (CI=PI), dados bancarios. '
-      + 'GRUPO Pesos e Volumes: peso bruto (CI=PL=BL=CE normalizado), peso liquido, CBM (PL=BL), numero de pecas (CI=PL=BL=CE). '
-      + 'GRUPO Logistica BL: porto de origem (CI=PL=BL), porto de destino (todos), container (PL=BL=CE), lacre (PL=BL=CE), NCM (BL=CE), free time, valor frete, prepaid/collect, wooden package. '
-      + 'GRUPO CE Mercante (se presente): numero CE, numero BL no CE (= BL), CNPJ importador no CE (= importador), portos, peso (normalizado), NCM, descricao, container, quantidade. Data CE comparar APENAS com data de embarque (on board date) do BL — nao comparar data CE com data CI/PL. '
-      + 'GRUPO Pais de Origem: pais de origem (CI=PL=CE). '
-      + '=== PASSO 03 — CODIGOS EUDEMON === '
-      + 'Se a marca for EUDEMON, verificar se o codigo correto esta presente na CI, PI e PL para cada medida/modelo: '
-      + '3301000094ab = 275/80R22.5 UD188 149/146L 18PR. '
-      + '3302001532eu = 275/80R22.5 UF195 149/146L 18PR. '
-      + '3302002217 = 295/80R22.5 UD188 154/149L 18PR. '
-      + '3302002218 = 295/80R22.5 UF195 154/149M 18PR. '
-      + '3302002429 = 295/80R22.5 UD223 154/149K 18PR. '
-      + '3302001815ab = 235/75R17.5 18PR 143/141L TL UD188. '
-      + '3302001861ab = 215/75R17.5 16PR 135/133L TL UD188. '
-      + '3302001609ab = 215/75R17.5 16PR 135/133L TL UF195. '
-      + '3302001608ab = 235/75R17.5 18PR 143/141L TL UF195. '
-      + 'Se o codigo estiver errado ou ausente para uma medida/modelo EUDEMON, marque como DIVERGENCIA no grupo Codigos EUDEMON. '
-      + '=== REGRAS DE NORMALIZACAO === '
-      + 'NUMEROS: 17.548,00 = 17.548,000 = 17548 = 17,548.00. Normalize antes de comparar. '
-      + 'DATAS: Extraia dia+mes+ano e compare os numeros. 2026-03-23 = 23/03/2026 = 23-Mar-2026. Mesmo dia+mes+ano = OK. '
-      + 'DATA CE MERCANTE: Nunca comparar data CE com data CI/PL. Comparar APENAS com on board date do BL. '
-      + 'TRANSBORDO: Navio pode diferir entre CI/PL e BL em caso de transbordo — verificar antes de marcar divergencia. '
-      + 'ABREVIACOES: HO CHI MINH = HO CHI MINH PORT. NAVEGANTES = NAVEGANTES,BRAZIL. '
-      + 'CONSIGNATARIO: No BL e CE o consignatario e sempre o importador/despachante. Na CI/PL o buyer e o encomendante. Papeis diferentes — nao e divergencia. '
-      + 'CNPJ: CNPJ do importador no BL/CE difere do CNPJ do buyer na CI/PL — normal, nao e divergencia. '
-      + 'Seja minucioso nos 3 passos. Retorne APENAS o JSON.';
+    const etapaAtual = document.getElementById('etapaSelect') ? document.getElementById('etapaSelect').value : '1';
+    const etapaLabels = {'1':'PI/Sales Contract + PL','2':'Draft BL + todos os docs','3':'BL Original','4':'CE Mercante + todos os docs'};
+    const etapaDesc = etapaLabels[etapaAtual] || '';
+
+    const prompt = 'Retorne APENAS JSON puro sem markdown. Voce e especialista em conferencia documental de importacao de pneus da Asia para o Brasil. '
+      + 'Documentos enviados nesta analise: ' + docList + '. Etapa atual: ' + etapaDesc + '. '
+      + 'Estrutura JSON obrigatoria: {"resumo":{"campos_ok":0,"divergencias":0,"alertas":0},"grupos":[{"titulo":"string","campos":[{"campo":"string","doc1_label":"string","doc1_valor":"string","doc2_label":"string","doc2_valor":"string","status":"OK","observacao":null}]}],"alertas":["string"]}. '
+      + 'alertas = array de STRINGS simples. '
+      + '\n=== PASSO 1: CAMPOS OBRIGATORIOS === '
+      + 'Verifique se cada documento presente tem seus campos obrigatorios. Campo ausente = ALERTA. '
+      + '\nCI (Commercial Invoice) obrigatorio: '
+      + '1-Nome e endereco completo do exportador. 2-Nome e endereco completo do importador. 3-Dados do encomendante/adquirente (se houver). 4-Forma e moeda de pagamento. 5-Porto de origem. 6-Porto de destino. 7-Descricao detalhada dos itens. 8-Marca numeracao e referencia dos volumes. 9-Quantidade e especie dos volumes. 10-Valores unitarios e totais. 11-Descontos ou reducoes (se houver). 12-Peso bruto e liquido. 13-Incoterm. 14-Pais de origem. 15-Pais de aquisicao. 16-Pais de procedencia. 17-Dados bancarios do exportador. 18-Valor do frete internacional: OBRIGATORIO se Incoterm diferente de FOB — se ausente gerar ALERTA CRITICO. '
+      + '\nPL (Packing List) obrigatorio: '
+      + '1-Dados completos do importador. 2-Dados do encomendante (se houver). 3-Porto de origem. 4-Porto de destino. 5-Descricao dos itens. 6-Quantidade e especie dos volumes. 7-Pesos unitarios e totais. 8-Peso bruto e liquido. 9-Descricao do produto (ex: MEDIUM RADIAL TRUCK TIRE). 10-Pais de origem. 11-Pais de aquisicao. 12-Endereco do fabricante. 13-Marca e numeracao dos volumes. 14-Numero container/BL/lacre: OPCIONAL, nao alertar se ausente. '
+      + '\nBL (Bill of Lading) obrigatorio: '
+      + '1-Shipper. 2-Notify party. 3-Consignee. 4-Porto de origem. 5-Porto de destino. 6-Peso. 7-Quantidade. 8-NCM. 9-Descricao do produto. 10-Free time. 11-Valor do frete. 12-Frete Prepaid ou Collect. 13-Numero container e lacre. 14-Informacao sobre madeira (wooden package). '
+      + '\n=== PASSO 2: CRUZAMENTO ENTRE DOCUMENTOS === '
+      + 'Compare TODOS os campos entre TODOS os documentos presentes. Qualquer diferenca = DIVERGENCIA com observacao clara. '
+      + 'Grupos de conferencia: '
+      + 'Identificacao: numero invoice, numero BL, referencia PO, datas. '
+      + 'Importador: nome e CNPJ do importador (igual em todos os docs). '
+      + 'Comprador Final: nome e CNPJ do encomendante/buyer (igual na CI e PL — pode diferir do importador, isso e normal). '
+      + 'Exportador: nome shipper, endereco, notify party, fabricante. '
+      + 'Mercadoria: descricao, marca, medida, modelo, PR, LI/SR, quantidade (CI=PL=BL=CE). '
+      + 'Valores: preco unitario, valor total, incoterm, condicoes de pagamento, dados bancarios. '
+      + 'Pesos e Volumes: peso bruto (CI=PL=BL=CE), peso liquido, CBM, numero de pecas. '
+      + 'Logistica: porto origem, porto destino, container, lacre, NCM, free time, frete, prepaid/collect, wooden package. '
+      + 'CE Mercante (se presente): numero CE, BL no CE, CNPJ importador, portos, peso, NCM, descricao, container, quantidade. '
+      + 'Pais de Origem: pais de origem (CI=PL=CE). '
+      + '\nREGRA PI vs CI: Se PI e CI presentes, comparar TODOS os campos entre elas. Qualquer diferenca = ALERTA separado por campo: "ALERTA PI vs CI: [campo] diverge — PI: [valor] / CI: [valor]". '
+      + '\n=== PASSO 3: CODIGOS EUDEMON === '
+      + 'Se marca for EUDEMON, verificar codigo correto na CI, PI e PL: '
+      + '3301000094ab=275/80R22.5 UD188 149/146L 18PR | 3302001532eu=275/80R22.5 UF195 149/146L 18PR | 3302002217=295/80R22.5 UD188 154/149L 18PR | 3302002218=295/80R22.5 UF195 154/149M 18PR | 3302002429=295/80R22.5 UD223 154/149K 18PR | 3302001815ab=235/75R17.5 18PR 143/141L TL UD188 | 3302001861ab=215/75R17.5 16PR 135/133L TL UD188 | 3302001609ab=215/75R17.5 16PR 135/133L TL UF195 | 3302001608ab=235/75R17.5 18PR 143/141L TL UF195. '
+      + 'Codigo errado ou ausente = DIVERGENCIA no grupo Codigos EUDEMON. '
+      + '\n=== REGRAS ESPECIAIS === '
+      + 'FOB + Collect no BL = correto. FOB + Prepaid no BL = ALERTA. '
+      + 'CIF/CFR + Prepaid no BL = correto. CIF/CFR + Collect no BL = ALERTA. '
+      + 'Data CE: comparar APENAS com on board date do BL, nunca com data CI/PL. '
+      + 'Consignatario BL/CE = sempre o importador/despachante. Buyer CI/PL = encomendante. Papeis diferentes, nao e divergencia. '
+      + 'CNPJ importador no BL/CE difere do CNPJ buyer na CI/PL = normal, nao e divergencia. '
+      + 'Transbordo: navio pode diferir CI/PL vs BL se houver transbordo — verificar antes de marcar divergencia. '
+      + 'Numeros: normalizar antes de comparar. 17.548,00 = 17.548,000 = 17548. '
+      + 'Datas: comparar dia+mes+ano. 2026-03-23 = 23/03/2026 = 23-Mar-2026. '
+      + 'Abreviacoes: HO CHI MINH = HO CHI MINH PORT. NAVEGANTES = NAVEGANTES,BRAZIL. '
+      + 'Retorne APENAS o JSON.';
 content.push({type:'text',text:prompt});
 
     setStep(3);
@@ -2019,6 +1989,23 @@ function copyOneDivEN(i){ var divs=getDivergencias(); copySectionText([divs[i]],
 function emailOneDiv(i){ var divs=getDivergencias(); emailSection([divs[i]],'docs',''); }
 
 // ─── ANALYSIS SYSTEM ─────────────────────────────────────────────────
+var ETAPA_HINTS = {
+  '1': {icon:'📋', text:'Etapa 1 — Envie a PI/Sales Contract e o Packing List para análise inicial dos campos obrigatórios e cruzamento entre eles.'},
+  '2': {icon:'🚢', text:'Etapa 2 — Envie o Draft BL junto com os demais documentos. O sistema cruzará tudo e alertará qualquer divergência.'},
+  '3': {icon:'⚓', text:'Etapa 3 — Envie o BL Original. O sistema confirma se as correções foram aplicadas.'},
+  '4': {icon:'🏛️', text:'Etapa 4 — Envie o CE Mercante com todos os documentos para a conferência final completa.'}
+};
+
+function updateEtapaHint(){
+  var sel = document.getElementById('etapaSelect');
+  var icon = document.getElementById('etapaHintIcon');
+  var txt = document.getElementById('etapaHintText');
+  if(!sel||!txt) return;
+  var h = ETAPA_HINTS[sel.value]||ETAPA_HINTS['1'];
+  if(icon) icon.textContent = h.icon;
+  txt.textContent = h.text;
+}
+
 function autoFillProcess(){
   var ref = document.getElementById('procRef').value.trim();
   var statusEl = document.getElementById('procStatus');
