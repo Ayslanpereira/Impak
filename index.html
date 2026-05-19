@@ -592,6 +592,13 @@ textarea.field-input{resize:vertical;min-height:80px;}
     </div>
     <button class="btn btn-primary" onclick="showPage('conferencia')">+ Nova Conferência</button>
   </div>
+  <div style="display:flex;gap:10px;margin-bottom:16px;align-items:center;">
+    <div style="position:relative;flex:1;">
+      <span style="position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--text-dim);font-size:14px;">🔍</span>
+      <input class="field-input" id="procSearch" placeholder="Buscar por referência, exportador, BL, container..." oninput="renderProcessos(this.value)" style="padding-left:36px;font-size:13px;">
+    </div>
+    <button class="btn btn-ghost btn-sm" onclick="document.getElementById('procSearch').value='';renderProcessos('')">Limpar</button>
+  </div>
   <div class="sec">Todos os Processos</div>
   <div id="processosList"></div>
 </div>
@@ -882,6 +889,8 @@ function showPage(id){
     if(n.getAttribute('onclick')&&n.getAttribute('onclick').includes(id)) n.classList.add('active');
   });
   if(id==='dashboard') renderDashboard();
+  if(id==='conferencia'){ uploadedFiles={}; divergResolved={}; var chips=document.getElementById('fileChips'); if(chips) chips.innerHTML=''; var ra=document.getElementById('resultArea'); if(ra) ra.style.display='none'; checkReady(); }
+  if(id==='processos'){ var ps=document.getElementById('procSearch'); if(ps) ps.value=''; renderProcessos(''); }
   if(id==='processos') renderProcessos();
   window.scrollTo(0,0);
 }
@@ -972,7 +981,9 @@ function checkReady(){
 }
 function clearConferencia(){
   uploadedFiles={};
-  document.getElementById('fileChips').innerHTML='';
+  divergResolved={};
+  var chips=document.getElementById('fileChips');
+  if(chips) chips.innerHTML='';
   document.getElementById('procRef').value='';
   document.getElementById('procExp').value='';
   document.getElementById('procObs').value='';
@@ -1021,49 +1032,97 @@ async function runAnalysis(){
 
     const docList=[...new Set(Object.values(uploadedFiles).map(f=>DOC_LBL[f.type]))].join(', ');
     const etapaAtual = document.getElementById('etapaSelect') ? document.getElementById('etapaSelect').value : '1';
-    const etapaLabels = {'1':'PI/Sales Contract + PL','2':'Draft BL + todos os docs','3':'BL Original','4':'CE Mercante + todos os docs'};
+    const etapaLabels = {'1':'PI/Sales Contract + CI + PL','2':'Draft BL + todos os docs','3':'BL Original','4':'CE Mercante + todos os docs'};
     const etapaDesc = etapaLabels[etapaAtual] || '';
 
     const prompt = 'Retorne APENAS JSON puro sem markdown. Voce e especialista em conferencia documental de importacao de pneus da Asia para o Brasil. '
-      + 'Documentos enviados nesta analise: ' + docList + '. Etapa atual: ' + etapaDesc + '. '
-      + 'Estrutura JSON obrigatoria: {"resumo":{"campos_ok":0,"divergencias":0,"alertas":0},"grupos":[{"titulo":"string","campos":[{"campo":"string","doc1_label":"string","doc1_valor":"string","doc2_label":"string","doc2_valor":"string","status":"OK","observacao":null}]}],"alertas":["string"]}. '
-      + 'alertas = array de STRINGS simples. '
+      + 'Documentos enviados: ' + docList + '. Etapa: ' + etapaDesc + '. '
+      + 'JSON obrigatorio: {"resumo":{"campos_ok":0,"divergencias":0,"alertas":0},"grupos":[{"titulo":"string","campos":[{"campo":"string","doc1_label":"string","doc1_valor":"string","doc2_label":"string","doc2_valor":"string","status":"OK","observacao":null}]}],"alertas":["string"]}. '
+      + 'REGRA GERAL: Sempre mencionar o nome do documento (ex: CI, PL, BL, CE Mercante) — NUNCA escrever "Documento 1", "Documento 2" ou deixar em branco. '
+      + 'Mostrar APENAS o que esta errado ou ausente. O que estiver correto, nao precisa aparecer. '
       + '\n=== PASSO 1: CAMPOS OBRIGATORIOS === '
-      + 'Verifique se cada documento presente tem seus campos obrigatorios. Campo ausente = ALERTA. '
-      + '\nCI (Commercial Invoice) obrigatorio: '
-      + '1-Nome e endereco completo do exportador. 2-Nome e endereco completo do importador. 3-Dados do encomendante/adquirente (se houver). 4-Forma e moeda de pagamento. 5-Porto de origem. 6-Porto de destino. 7-Descricao detalhada dos itens. 8-Marca numeracao e referencia dos volumes. 9-Quantidade e especie dos volumes. 10-Valores unitarios e totais. 11-Descontos ou reducoes (se houver). 12-Peso bruto e liquido. 13-Incoterm. 14-Pais de origem. 15-Pais de aquisicao. 16-Pais de procedencia. 17-Dados bancarios do exportador. 18-Valor do frete internacional: OBRIGATORIO se Incoterm diferente de FOB — se ausente gerar ALERTA CRITICO. '
-      + '\nPL (Packing List) obrigatorio: '
-      + '1-Dados completos do importador. 2-Dados do encomendante (se houver). 3-Porto de origem. 4-Porto de destino. 5-Descricao dos itens. 6-Quantidade e especie dos volumes. 7-Pesos unitarios e totais. 8-Peso bruto e liquido. 9-Descricao do produto (ex: MEDIUM RADIAL TRUCK TIRE). 10-Pais de origem. 11-Pais de aquisicao. 12-Endereco do fabricante. 13-Marca e numeracao dos volumes. 14-Numero container/BL/lacre: OPCIONAL, nao alertar se ausente. '
-      + '\nBL (Bill of Lading) obrigatorio: '
-      + '1-Shipper. 2-Notify party. 3-Consignee. 4-Porto de origem. 5-Porto de destino. 6-Peso. 7-Quantidade. 8-NCM. 9-Descricao do produto. 10-Free time. 11-Valor do frete. 12-Frete Prepaid ou Collect. 13-Numero container e lacre. 14-Informacao sobre madeira (wooden package). '
+      + 'Se um campo obrigatorio estiver AUSENTE em um documento, gerar DIVERGENCIA com status=AUSENTE. '
+      + '\nPI e CI (Proforma Invoice e Commercial Invoice) — ambas devem conter: '
+      + '(1) Nome e endereco completo do exportador. '
+      + '(2) Nome e endereco completo do importador. '
+      + '(3) Dados do encomendante/adquirente — alertar APENAS se houver indicacao de encomendante mas os dados estiverem incompletos. '
+      + '(4) Forma e moeda de pagamento. '
+      + '(5) Porto de origem. '
+      + '(6) Porto de destino. '
+      + '(7) Descricao detalhada dos itens. '
+      + '(8) Marca, numeracao e referencia dos volumes. '
+      + '(9) Quantidade e especie dos volumes. '
+      + '(10) Valores unitarios e totais. '
+      + '(11) Descontos ou reducoes — alertar APENAS se houver indicacao de desconto sem valor discriminado. '
+      + '(12) Peso bruto e peso liquido. '
+      + '(13) Incoterm. '
+      + '(14) Pais de origem. '
+      + '(15) Pais de aquisicao. '
+      + '(16) Pais de procedencia. '
+      + '(17) Dados bancarios do exportador (banco, conta, SWIFT). '
+      + '(18) Valor do frete internacional: OBRIGATORIO apenas se Incoterm for DIFERENTE de FOB. Se Incoterm for FOB, nao precisa constar. Se Incoterm diferente de FOB e valor ausente = DIVERGENCIA CRITICA. '
+      + 'REGRA PI vs CI: PI e CI devem ser praticamente identicas. Comparar TODOS os campos entre PI e CI e para QUALQUER diferenca gerar DIVERGENCIA especifica: campo="{campo}", doc1_label="PI", doc1_valor="{valor PI}", doc2_label="CI", doc2_valor="{valor CI}". '
+      + '\nPL (Packing List) deve conter: '
+      + '(1) Dados completos do importador. '
+      + '(2) Dados do encomendante — alertar se na PI/CI o campo Buyer estiver preenchido mas no PL estiver ausente. '
+      + '(3) Porto de origem. '
+      + '(4) Porto de destino. '
+      + '(5) Descricao dos itens. '
+      + '(6) Quantidade e especie dos volumes. '
+      + '(7) Pesos unitarios e totais. '
+      + '(8) Peso bruto e peso liquido. '
+      + '(9) Descricao do produto: deve conter alguma referencia a pneu — palavras aceitas: TIRE, TIRES, TYRE, TYRES, PNEU, RADIAL, TRUCK TIRE. Se nao houver NENHUMA dessas palavras na descricao do produto, gerar DIVERGENCIA. '
+      + '(10) Pais de origem. '
+      + '(11) Pais de aquisicao. '
+      + '(12) Endereco do fabricante. '
+      + '(13) Marca e numeracao dos volumes. '
+      + '(14) Numero container/BL/lacre: OPCIONAL, nao alertar se ausente. '
+      + '\nBL (Bill of Lading) deve conter: '
+      + '(1) Shipper (nome e endereco). '
+      + '(2) Notify party. '
+      + '(3) Consignee. '
+      + '(4) Porto de origem. '
+      + '(5) Porto de destino. '
+      + '(6) Peso bruto. '
+      + '(7) Quantidade. '
+      + '(8) NCM. '
+      + '(9) Descricao do produto. '
+      + '(10) Free time. '
+      + '(11) Valor do frete. '
+      + '(12) Frete Prepaid ou Collect. '
+      + '(13) Numero do container e numero do lacre. Se PI/CI/PL tiverem container/lacre, deve ser IDENTICO no BL — se diferente = DIVERGENCIA. '
+      + '(14) Informacao sobre madeira/pallet: deve constar se TEM ou se NAO TEM material de madeira. Palavras aceitas: WOODEN, WOOD, PALLET, NO WOOD, NOT APPLICABLE. Se nao houver NENHUMA referencia = DIVERGENCIA. '
+      + '\nCE Mercante: '
+      + 'Para cruzar dados de navio/embarque do CE Mercante com o BL: usar PRIMEIRO o campo Transbordo/Baldeacao do CE. Se esse campo estiver em branco ou "-", usar os dados do manifesto principal. '
+      + 'O numero do CE Mercante NAO precisa ser cruzado com nenhum outro documento. '
       + '\n=== PASSO 2: CRUZAMENTO ENTRE DOCUMENTOS === '
-      + 'Compare TODOS os campos entre TODOS os documentos presentes. Qualquer diferenca = DIVERGENCIA com observacao clara. '
+      + 'Cruzar TODOS os campos entre TODOS os documentos. Regras: '
+      + '(A) Se um campo existe em um documento e esta em branco/ausente em outro = DIVERGENCIA. '
+      + '(B) Dados bancarios devem ser IDENTICOS em todos os documentos onde aparecem — qualquer diferenca = DIVERGENCIA. '
+      + '(C) Sempre usar o nome real do documento (CI, PI, PL, BL, CE Mercante). Nunca "Documento 1" ou similar. '
       + 'Grupos de conferencia: '
-      + 'Identificacao: numero invoice, numero BL, referencia PO, datas. '
-      + 'Importador: nome e CNPJ do importador (igual em todos os docs). '
-      + 'Comprador Final: nome e CNPJ do encomendante/buyer (igual na CI e PL — pode diferir do importador, isso e normal). '
-      + 'Exportador: nome shipper, endereco, notify party, fabricante. '
+      + 'Identificacao: numero invoice (CI=PL=CE), numero BL (BL=PL=CI=CE), referencia PO, datas (CI=PL entre si). '
+      + 'Importador: nome e CNPJ importador (igual em todos). '
+      + 'Comprador Final: nome e CNPJ do buyer/encomendante (igual em CI e PL — pode ser diferente do importador, isso e NORMAL e NAO e divergencia). '
+      + 'Exportador: nome shipper/exportador, endereco, notify party, fabricante. '
       + 'Mercadoria: descricao, marca, medida, modelo, PR, LI/SR, quantidade (CI=PL=BL=CE). '
-      + 'Valores: preco unitario, valor total, incoterm, condicoes de pagamento, dados bancarios. '
-      + 'Pesos e Volumes: peso bruto (CI=PL=BL=CE), peso liquido, CBM, numero de pecas. '
-      + 'Logistica: porto origem, porto destino, container, lacre, NCM, free time, frete, prepaid/collect, wooden package. '
-      + 'CE Mercante (se presente): numero CE, BL no CE, CNPJ importador, portos, peso, NCM, descricao, container, quantidade. '
+      + 'Valores: preco unitario, valor total, incoterm, condicoes de pagamento (PI=CI obrigatorio), dados bancarios (identicos em todos). '
+      + 'Pesos: peso bruto (CI=PL=BL=CE normalizado), peso liquido, CBM. '
+      + 'Logistica: porto origem, porto destino, container, lacre, NCM, free time, frete, prepaid/collect, wooden. '
+      + 'CE Mercante: BL no CE (=BL), CNPJ importador no CE (=importador), portos, peso, NCM, container, quantidade. Data CE = APENAS on board date do BL. '
       + 'Pais de Origem: pais de origem (CI=PL=CE). '
-      + '\nREGRA PI vs CI: Se PI e CI presentes, comparar TODOS os campos entre elas. Qualquer diferenca = ALERTA separado por campo: "ALERTA PI vs CI: [campo] diverge — PI: [valor] / CI: [valor]". '
       + '\n=== PASSO 3: CODIGOS EUDEMON === '
-      + 'Se marca for EUDEMON, verificar codigo correto na CI, PI e PL: '
+      + 'Se marca for EUDEMON, verificar codigo em CI, PI e PL: '
       + '3301000094ab=275/80R22.5 UD188 149/146L 18PR | 3302001532eu=275/80R22.5 UF195 149/146L 18PR | 3302002217=295/80R22.5 UD188 154/149L 18PR | 3302002218=295/80R22.5 UF195 154/149M 18PR | 3302002429=295/80R22.5 UD223 154/149K 18PR | 3302001815ab=235/75R17.5 18PR 143/141L TL UD188 | 3302001861ab=215/75R17.5 16PR 135/133L TL UD188 | 3302001609ab=215/75R17.5 16PR 135/133L TL UF195 | 3302001608ab=235/75R17.5 18PR 143/141L TL UF195. '
-      + 'Codigo errado ou ausente = DIVERGENCIA no grupo Codigos EUDEMON. '
+      + 'Codigo errado ou ausente para medida EUDEMON = DIVERGENCIA no grupo Codigos EUDEMON. '
       + '\n=== REGRAS ESPECIAIS === '
-      + 'FOB + Collect no BL = correto. FOB + Prepaid no BL = ALERTA. '
-      + 'CIF/CFR + Prepaid no BL = correto. CIF/CFR + Collect no BL = ALERTA. '
-      + 'Data CE: comparar APENAS com on board date do BL, nunca com data CI/PL. '
+      + 'FOB + Collect = correto. FOB + Prepaid = ALERTA. CIF/CFR + Prepaid = correto. CIF/CFR + Collect = ALERTA. '
       + 'Consignatario BL/CE = sempre o importador/despachante. Buyer CI/PL = encomendante. Papeis diferentes, nao e divergencia. '
-      + 'CNPJ importador no BL/CE difere do CNPJ buyer na CI/PL = normal, nao e divergencia. '
-      + 'Transbordo: navio pode diferir CI/PL vs BL se houver transbordo — verificar antes de marcar divergencia. '
-      + 'Numeros: normalizar antes de comparar. 17.548,00 = 17.548,000 = 17548. '
-      + 'Datas: comparar dia+mes+ano. 2026-03-23 = 23/03/2026 = 23-Mar-2026. '
-      + 'Abreviacoes: HO CHI MINH = HO CHI MINH PORT. NAVEGANTES = NAVEGANTES,BRAZIL. '
+      + 'CNPJ importador no BL/CE difere do CNPJ buyer na CI/PL = normal. '
+      + 'Transbordo: navio pode diferir CI/PL vs BL em caso de transbordo. '
+      + 'Numeros: 17.548,00 = 17.548,000 = 17548. Normalizar antes de comparar. '
+      + 'Datas: extrair dia+mes+ano. 2026-03-23 = 23/03/2026. Mesmo dia+mes+ano = OK. '
+      + 'Data CE: comparar APENAS com on board date do BL, nunca com data CI/PL. '
       + 'Retorne APENAS o JSON.';
 content.push({type:'text',text:prompt});
 
@@ -1264,53 +1323,94 @@ function renderResult(r){
 
 // ─── DASHBOARD ────────────────────────────────────────────────────────
 function renderDashboard(){
-  const procs=getProcesses();
-  document.getElementById('statTotal').textContent=procs.length;
-  document.getElementById('statOk').textContent=procs.filter(p=>p.status==='ok').length;
-  document.getElementById('statWarn').textContent=procs.filter(p=>p.status==='warn').length;
-  document.getElementById('statErr').textContent=procs.filter(p=>p.status==='err').length;
+  var procs=getProcesses();
+  var total=procs.length;
+  var ok=procs.filter(function(p){return p.status==='ok';}).length;
+  var warn=procs.filter(function(p){return p.status==='warn';}).length;
+  var err=procs.filter(function(p){return p.status==='err';}).length;
 
-  const recent=procs.slice(0,5);
-  const el=document.getElementById('dashRecent');
-  if(!recent.length){ el.innerHTML=`<div class="empty"><div class="empty-icon">📭</div><div class="empty-title">Nenhum processo ainda</div><div class="empty-sub">Faça sua primeira conferência documental</div></div>`; return; }
-  el.innerHTML=`<div class="process-list">${recent.map(p=>procRowHTML(p)).join('')}</div>`;
-}
+  var s1=document.getElementById('statTotal');
+  var s2=document.getElementById('statOk');
+  var s3=document.getElementById('statWarn');
+  var s4=document.getElementById('statErr');
+  if(s1) s1.textContent=total;
+  if(s2) s2.textContent=ok;
+  if(s3) s3.textContent=warn;
+  if(s4) s4.textContent=err;
 
-// ─── PROCESSOS ────────────────────────────────────────────────────────
-function renderProcessos(){
-  const procs=getProcesses();
-  const el=document.getElementById('processosList');
-  if(!procs.length){ el.innerHTML=`<div class="empty"><div class="empty-icon">📁</div><div class="empty-title">Nenhum processo salvo</div><div class="empty-sub">As conferências realizadas aparecerão aqui</div></div>`; return; }
-  el.innerHTML=`<div class="process-list">${procs.map(p=>procRowHTML(p)).join('')}</div>`;
-}
+  var recent=document.getElementById('dashRecent');
+  if(!recent) return;
 
-function procRowHTML(p){
-  const statusLabel={ok:'Sem divergências',warn:'Com alertas',err:'Com divergências',pending:'Pendente'};
-  return `<div class="process-row" onclick="openProcess(${p.id})">
-    <span class="proc-ref">${p.ref}</span>
-    <span class="proc-desc">${p.exportador||'—'}</span>
-    <span class="proc-date">${p.data}</span>
-    <span class="proc-status ${p.status}">${statusLabel[p.status]||p.status}</span>
-    <div class="proc-actions" onclick="event.stopPropagation()">
-      <button class="btn btn-ghost btn-sm" onclick="openProcess(${p.id})">Ver</button>
-    </div>
-  </div>`;
-}
-
-// ─── PROCESS MODAL ────────────────────────────────────────────────────
-function extractAlert(a){
-  if(typeof a==='string') return a;
-  if(typeof a==='object'&&a!==null){
-    var parts=[];
-    if(a.titulo) parts.push(a.titulo);
-    if(a.descricao) parts.push(a.descricao);
-    if(a.impacto) parts.push('Impacto: '+a.impacto);
-    if(parts.length) return parts.join(' — ');
-    var vals=Object.values(a).filter(function(v){return typeof v==='string';});
-    return vals.join(' — ')||JSON.stringify(a);
+  if(!procs.length){
+    recent.innerHTML='<div style="text-align:center;color:var(--text-dim);font-size:13px;padding:32px 0;">Nenhum processo ainda.</div>';
+    return;
   }
-  return String(a);
+
+  recent.innerHTML=procs.slice(0,5).map(function(p){
+    var statusColors={ok:'var(--ok)',warn:'var(--warn)',err:'var(--danger)'};
+    var statusLabels={ok:'OK',warn:'Alertas',err:'Divergências'};
+    var sc=statusColors[p.status]||'var(--text-dim)';
+    var sl=statusLabels[p.status]||'—';
+    var analises=(p.analises||[]).length;
+    return '<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border);">'
+      +'<div><div style="font-weight:600;font-size:13px;color:var(--text-bright);">'+p.ref+'</div>'
+      +'<div style="font-size:11px;color:var(--text-dim);">'+(p.exportador||'—')+' · '+p.data+' · '+analises+' análise(s)</div></div>'
+      +'<span style="font-size:11px;font-weight:700;color:'+sc+';font-family:monospace;">'+sl+'</span>'
+      +'</div>';
+  }).join('');
 }
+
+
+function renderProcessos(filter){
+  var procs=getProcesses();
+  var q=(filter||'').toLowerCase().trim();
+  if(q){
+    procs=procs.filter(function(p){
+      var searchStr=[
+        p.ref||'', p.exportador||'', p.obs||'',
+        (p.analises||[]).map(function(a){return a.docs||'';}).join(' '),
+        (p.log||[]).map(function(l){return l.msg||'';}).join(' ')
+      ].join(' ').toLowerCase();
+      return searchStr.includes(q);
+    });
+  }
+
+  var list=document.getElementById('processosList');
+  if(!list) return;
+  if(!procs.length){
+    list.innerHTML='<div style="text-align:center;color:var(--text-dim);font-size:13px;padding:32px 0;">'+(q?'Nenhum resultado para "'+q+'"':'Nenhum processo encontrado.')+'</div>';
+    return;
+  }
+  list.innerHTML=procs.map(function(p){
+    var statusColors={ok:'var(--ok)',warn:'var(--warn)',err:'var(--danger)'};
+    var statusIcons={ok:'✓',warn:'⚠',err:'✗'};
+    var sc=statusColors[p.status]||'#94a3b8';
+    var si=statusIcons[p.status]||'—';
+    var analises=(p.analises||[]);
+    var lastA=analises.length?analises[analises.length-1]:null;
+    var divCount=lastA&&lastA.resumo?lastA.resumo.divergencias:0;
+    var alertCount=lastA&&lastA.resumo?lastA.resumo.alertas:0;
+    return '<div class="proc-card" onclick="openProcess('+p.id+')" style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:16px;margin-bottom:10px;cursor:pointer;">';
+      +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">'
+      +'<div style="display:flex;align-items:center;gap:10px;">'
+      +'<span style="font-size:16px;font-weight:800;color:var(--accent);font-family:monospace;">'+p.ref+'</span>'
+      +'<span style="font-size:11px;color:var(--text-dim);">'+(p.exportador||'')+'</span>'
+      +'</div>'
+      +'<div style="display:flex;align-items:center;gap:6px;">'
+      +(divCount?'<span style="font-size:10px;padding:2px 8px;border-radius:100px;background:rgba(220,38,38,0.1);color:var(--danger);font-family:monospace;">✗ '+divCount+' diverg.</span>':'')
+      +(alertCount?'<span style="font-size:10px;padding:2px 8px;border-radius:100px;background:rgba(217,119,6,0.1);color:var(--warn);font-family:monospace;">⚠ '+alertCount+' alertas</span>':'')
+      +(!divCount&&!alertCount?'<span style="font-size:10px;padding:2px 8px;border-radius:100px;background:rgba(22,163,74,0.1);color:var(--ok);font-family:monospace;">✓ OK</span>':'')
+      +'</div></div>'
+      +'<div style="display:flex;gap:16px;font-size:11px;color:var(--text-dim);">'
+      +'<span>'+p.data+'</span>'
+      +'<span>'+analises.length+' análise(s)</span>'
+      +(lastA?'<span>Última: '+lastA.data+'</span>':'')
+      +(lastA?'<span>'+lastA.docs+'</span>':'')
+      +'</div>'
+      +'</div>';
+  }).join('');
+}
+
 
 function openProcess(id){
   var procs=getProcesses();
