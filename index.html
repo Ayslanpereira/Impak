@@ -889,7 +889,7 @@ function showPage(id){
     if(n.getAttribute('onclick')&&n.getAttribute('onclick').includes(id)) n.classList.add('active');
   });
   if(id==='dashboard') renderDashboard();
-  if(id==='conferencia'){ uploadedFiles={}; divergResolved={}; var chips=document.getElementById('fileChips'); if(chips) chips.innerHTML=''; var ra=document.getElementById('resultArea'); if(ra) ra.style.display='none'; checkReady(); }
+  if(id==='conferencia'){ var ra2=document.getElementById('resultArea'); if(ra2) ra2.style.display='none'; }
   if(id==='processos'){ var ps=document.getElementById('procSearch'); if(ps) ps.value=''; renderProcessos(''); }
   if(id==='processos') renderProcessos();
   window.scrollTo(0,0);
@@ -1131,7 +1131,7 @@ async function runAnalysis(){
     const resp = await fetch('https://api.anthropic.com/v1/messages',{
       method:'POST',
       headers:{'Content-Type':'application/json','x-api-key':_apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
-      body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:16000,messages:[{role:'user',content}]})
+      body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:16000,messages:[{role:'user',content}]})
     });
 
     if(!resp.ok){
