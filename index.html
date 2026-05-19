@@ -771,7 +771,61 @@ textarea.field-input{resize:vertical;min-height:80px;}
 <!-- Toast -->
 <div class="toast" id="toast"></div>
 
-<script>
+<script>// ─── EARLY FUNCTION DECLARATIONS (needed by HTML onload) ─────────────
+function showToast(msg,type){
+  const t=document.getElementById('toast');
+  if(!t) return;
+  t.textContent=msg;
+  t.className='toast show '+(type||'');
+  clearTimeout(showToast._t);
+  showToast._t=setTimeout(()=>t.className='toast',3500);
+}
+
+var ETAPA_HINTS = {
+  '1': {icon:'📋', text:'Etapa 1 — Envie a PI/Sales Contract, CI e o Packing List para análise inicial.'},
+  '2': {icon:'🚢', text:'Etapa 2 — Envie o Draft BL junto com os demais documentos.'},
+  '3': {icon:'⚓', text:'Etapa 3 — Envie o BL Original. O sistema confirma as correções.'},
+  '4': {icon:'🏛️', text:'Etapa 4 — Envie o CE Mercante com todos os documentos para conferência final.'}
+};
+
+function updateEtapaHint(){
+  var sel=document.getElementById('etapaSelect');
+  var icon=document.getElementById('etapaHintIcon');
+  var txt=document.getElementById('etapaHintText');
+  if(!sel||!txt) return;
+  var h=ETAPA_HINTS[sel.value]||ETAPA_HINTS['1'];
+  if(icon) icon.textContent=h.icon;
+  txt.textContent=h.text;
+}
+
+function autoFillProcess(){
+  var ref=document.getElementById('procRef').value.trim();
+  var statusEl=document.getElementById('procStatus');
+  var statusTxt=document.getElementById('procStatusText');
+  if(!ref){if(statusEl) statusEl.style.display='none'; return;}
+  var procs=getProcesses();
+  var existing=procs.find(function(p){return p.ref===ref;});
+  if(!existing){if(statusEl) statusEl.style.display='none'; return;}
+  var expEl=document.getElementById('procExp');
+  if(expEl&&!expEl.value&&existing.exportador) expEl.value=existing.exportador;
+  var analises=existing.analises||[];
+  var lastA=analises.length?analises[analises.length-1]:null;
+  if(statusEl&&statusTxt){
+    var msg='📁 Processo existente — '+analises.length+' análise(s).';
+    if(lastA){
+      msg+=' Última: '+lastA.data+' ('+lastA.docs+')';
+      var divCount=lastA.resumo?lastA.resumo.divergencias:0;
+      msg+=divCount>0?' — ⚠ '+divCount+' divergência(s) pendente(s).':' — ✓ Sem divergências.';
+    }
+    msg+=' Adicione os novos documentos e analise novamente.';
+    statusTxt.textContent=msg;
+    statusEl.style.display='flex';
+  }
+  showToast('Processo '+ref+' encontrado — '+analises.length+' análise(s)','ok');
+}
+// ─── END EARLY DECLARATIONS ───────────────────────────────────────────
+
+
 // ─── STATE ───────────────────────────────────────────────────────────
 let uploadedFiles = {};
 let currentResult = null;
