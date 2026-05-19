@@ -811,6 +811,14 @@ function autoFillProcess(){
   }
   showToast('Processo '+ref+' encontrado — '+analises.length+' análise(s)','ok');
 }
+function extractAlert(a){
+  if(typeof a==='string') return a;
+  if(a&&typeof a==='object'){
+    return a.descricao||a.mensagem||a.message||a.texto||a.text||JSON.stringify(a);
+  }
+  return String(a||'');
+}
+
 // ─── END EARLY DECLARATIONS ───────────────────────────────────────────
 
 
@@ -1266,7 +1274,7 @@ function renderResult(r){
   // Groups
   const cg=document.getElementById('checkGroups');
   cg.innerHTML='';
-  for(const grupo of r.grupos){
+  for(const grupo of (r.grupos||[])){
     const hasDiv=grupo.campos.some(c=>c.status==='DIVERGENCIA');
     const el=document.createElement('div');
     el.className='check-group';
