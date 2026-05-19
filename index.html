@@ -615,19 +615,10 @@ textarea.field-input{resize:vertical;min-height:80px;}
   <!-- Step 1: Processo info -->
   <div class="sec">01 — Identificação do Processo</div>
   <div class="card" style="margin-bottom:24px;">
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:16px;flex-wrap:wrap;">
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;flex-wrap:wrap;">
       <div class="field-group" style="margin:0">
         <label class="field-label">Referência do Processo *</label>
         <input class="field-input" id="procRef" placeholder="Ex: UD26-009" oninput="checkReady();autoFillProcess();">
-      </div>
-      <div class="field-group" style="margin:0">
-        <label class="field-label">Etapa</label>
-        <select class="field-input" id="etapaSelect" onchange="updateEtapaHint()">
-          <option value="1">1 — PI / Sales Contract + PL</option>
-          <option value="2">2 — Draft BL + demais docs</option>
-          <option value="3">3 — BL Original</option>
-          <option value="4">4 — CE Mercante (análise final)</option>
-        </select>
       </div>
       <div class="field-group" style="margin:0">
         <label class="field-label">Exportador</label>
@@ -641,10 +632,7 @@ textarea.field-input{resize:vertical;min-height:80px;}
     <div id="procStatus" style="display:none;margin-top:12px;padding:10px 14px;border-radius:6px;font-size:12px;background:var(--accent-dim);color:var(--accent);border:1px solid rgba(10,45,94,0.15);">
       <span id="procStatusText"></span>
     </div>
-    <div id="etapaHint" style="margin-top:10px;padding:10px 14px;border-radius:6px;font-size:12px;border:1px solid rgba(10,45,94,0.15);background:var(--accent-dim);color:var(--accent);display:flex;align-items:center;gap:8px;">
-      <span id="etapaHintIcon">📋</span>
-      <span id="etapaHintText">Envie a PI/Sales Contract e o Packing List para a análise inicial.</span>
-    </div>
+
   </div>
 
   <!-- Step 2: Upload -->
@@ -1085,21 +1073,18 @@ async function runAnalysis(){
     setStep(2);
 
     const docList=[...new Set(Object.values(uploadedFiles).map(f=>DOC_LBL[f.type]))].join(', ');
-    const etapaAtual = document.getElementById('etapaSelect') ? document.getElementById('etapaSelect').value : '1';
-    const etapaLabels = {'1':'PI/Sales Contract + CI + PL','2':'Draft BL + todos os docs','3':'BL Original','4':'CE Mercante + todos os docs'};
-    const etapaDesc = etapaLabels[etapaAtual] || '';
 
     const prompt = 'Retorne APENAS JSON puro sem markdown. Voce e especialista em conferencia documental de importacao de pneus da Asia para o Brasil. '
-      + 'Documentos enviados: ' + docList + '. Etapa: ' + etapaDesc + '. '
+      + 'Documentos enviados nesta analise: ' + docList + '. '
       + 'JSON obrigatorio: {"resumo":{"campos_ok":0,"divergencias":0,"alertas":0},"grupos":[{"titulo":"string","campos":[{"campo":"string","doc1_label":"string","doc1_valor":"string","doc2_label":"string","doc2_valor":"string","status":"OK","observacao":null}]}],"alertas":["string"]}. '
-      + 'REGRA GERAL: Sempre mencionar o nome do documento (ex: CI, PL, BL, CE Mercante) — NUNCA escrever "Documento 1", "Documento 2" ou deixar em branco. '
-      + 'Mostrar APENAS o que esta errado ou ausente. O que estiver correto, nao precisa aparecer. '
+      + 'REGRA GERAL: Sempre usar o nome real do documento (CI, PL, BL, CE Mercante, PI). NUNCA escrever Documento 1 ou Documento 2. '
+      + 'Mostrar APENAS o que esta errado ou ausente. O que estiver correto nao precisa aparecer. '
       + '\n=== PASSO 1: CAMPOS OBRIGATORIOS === '
-      + 'Se um campo obrigatorio estiver AUSENTE em um documento, gerar DIVERGENCIA com status=AUSENTE. '
-      + '\nPI e CI (Proforma Invoice e Commercial Invoice) — ambas devem conter: '
+      + 'Se um campo obrigatorio estiver ausente, gerar DIVERGENCIA com status AUSENTE. '
+      + '\nPI e CI devem conter: '
       + '(1) Nome e endereco completo do exportador. '
       + '(2) Nome e endereco completo do importador. '
-      + '(3) Dados do encomendante/adquirente — alertar APENAS se houver indicacao de encomendante mas os dados estiverem incompletos. '
+      + '(3) Dados do encomendante/adquirente (alertar se indicado mas incompleto). '
       + '(4) Forma e moeda de pagamento. '
       + '(5) Porto de origem. '
       + '(6) Porto de destino. '
@@ -1107,77 +1092,59 @@ async function runAnalysis(){
       + '(8) Marca, numeracao e referencia dos volumes. '
       + '(9) Quantidade e especie dos volumes. '
       + '(10) Valores unitarios e totais. '
-      + '(11) Descontos ou reducoes — alertar APENAS se houver indicacao de desconto sem valor discriminado. '
+      + '(11) Descontos ou reducoes (alertar apenas se indicado sem valor). '
       + '(12) Peso bruto e peso liquido. '
       + '(13) Incoterm. '
       + '(14) Pais de origem. '
       + '(15) Pais de aquisicao. '
       + '(16) Pais de procedencia. '
       + '(17) Dados bancarios do exportador (banco, conta, SWIFT). '
-      + '(18) Valor do frete internacional: OBRIGATORIO apenas se Incoterm for DIFERENTE de FOB. Se Incoterm for FOB, nao precisa constar. Se Incoterm diferente de FOB e valor ausente = DIVERGENCIA CRITICA. '
-      + 'REGRA PI vs CI: PI e CI devem ser praticamente identicas. Comparar TODOS os campos entre PI e CI e para QUALQUER diferenca gerar DIVERGENCIA especifica: campo="{campo}", doc1_label="PI", doc1_valor="{valor PI}", doc2_label="CI", doc2_valor="{valor CI}". '
-      + '\nPL (Packing List) deve conter: '
+      + '(18) Frete internacional: obrigatorio se Incoterm diferente de FOB. Se FOB, nao precisa. Se diferente de FOB e ausente = DIVERGENCIA CRITICA. '
+      + 'REGRA PI vs CI: PI e CI devem ser identicas. Para qualquer diferenca gerar DIVERGENCIA: doc1_label=PI, doc2_label=CI. '
+      + '\nPL deve conter: '
       + '(1) Dados completos do importador. '
-      + '(2) Dados do encomendante — alertar se na PI/CI o campo Buyer estiver preenchido mas no PL estiver ausente. '
+      + '(2) Dados do encomendante (alertar se Buyer preenchido na PI/CI mas ausente no PL). '
       + '(3) Porto de origem. '
       + '(4) Porto de destino. '
       + '(5) Descricao dos itens. '
       + '(6) Quantidade e especie dos volumes. '
       + '(7) Pesos unitarios e totais. '
       + '(8) Peso bruto e peso liquido. '
-      + '(9) Descricao do produto: deve conter alguma referencia a pneu — palavras aceitas: TIRE, TIRES, TYRE, TYRES, PNEU, RADIAL, TRUCK TIRE. Se nao houver NENHUMA dessas palavras na descricao do produto, gerar DIVERGENCIA. '
+      + '(9) Descricao do produto com referencia a pneu: palavras aceitas TIRE TIRES TYRE TYRES PNEU RADIAL TRUCK TIRE. Se nenhuma dessas = DIVERGENCIA. '
       + '(10) Pais de origem. '
       + '(11) Pais de aquisicao. '
       + '(12) Endereco do fabricante. '
       + '(13) Marca e numeracao dos volumes. '
-      + '(14) Numero container/BL/lacre: OPCIONAL, nao alertar se ausente. '
-      + '\nBL (Bill of Lading) deve conter: '
-      + '(1) Shipper (nome e endereco). '
-      + '(2) Notify party. '
-      + '(3) Consignee. '
-      + '(4) Porto de origem. '
-      + '(5) Porto de destino. '
-      + '(6) Peso bruto. '
-      + '(7) Quantidade. '
-      + '(8) NCM. '
-      + '(9) Descricao do produto. '
-      + '(10) Free time. '
-      + '(11) Valor do frete. '
-      + '(12) Frete Prepaid ou Collect. '
-      + '(13) Numero do container e numero do lacre. Se PI/CI/PL tiverem container/lacre, deve ser IDENTICO no BL — se diferente = DIVERGENCIA. '
-      + '(14) Informacao sobre madeira/pallet: deve constar se TEM ou se NAO TEM material de madeira. Palavras aceitas: WOODEN, WOOD, PALLET, NO WOOD, NOT APPLICABLE. Se nao houver NENHUMA referencia = DIVERGENCIA. '
-      + '\nCE Mercante: '
-      + 'Para cruzar dados de navio/embarque do CE Mercante com o BL: usar PRIMEIRO o campo Transbordo/Baldeacao do CE. Se esse campo estiver em branco ou "-", usar os dados do manifesto principal. '
-      + 'O numero do CE Mercante NAO precisa ser cruzado com nenhum outro documento. '
+      + '(14) Container/BL/lacre: OPCIONAL, nao alertar se ausente. '
+      + '\nBL deve conter: '
+      + '(1) Shipper. (2) Notify party. (3) Consignee. '
+      + '(4) Porto de origem. (5) Porto de destino. '
+      + '(6) Peso bruto. (7) Quantidade. (8) NCM. (9) Descricao do produto. '
+      + '(10) Free time. (11) Valor do frete. (12) Frete Prepaid ou Collect. '
+      + '(13) Container e lacre: se PI/CI/PL tiverem, deve ser identico no BL. '
+      + '(14) Informacao sobre madeira: deve constar se tem ou nao. Palavras aceitas: WOODEN WOOD PALLET NO WOOD NOT APPLICABLE. Se nenhuma = DIVERGENCIA. '
+      + '\nCE Mercante: cruzar dados de navio com campo Transbordo/Baldeacao do CE. Se em branco ou -, usar dados do manifesto. Numero do CE nao precisa cruzar com nenhum doc. '
       + '\n=== PASSO 2: CRUZAMENTO ENTRE DOCUMENTOS === '
-      + 'Cruzar TODOS os campos entre TODOS os documentos. Regras: '
-      + '(A) Se um campo existe em um documento e esta em branco/ausente em outro = DIVERGENCIA. '
-      + '(B) Dados bancarios devem ser IDENTICOS em todos os documentos onde aparecem — qualquer diferenca = DIVERGENCIA. '
-      + '(C) Sempre usar o nome real do documento (CI, PI, PL, BL, CE Mercante). Nunca "Documento 1" ou similar. '
-      + 'Grupos de conferencia: '
-      + 'Identificacao: numero invoice (CI=PL=CE), numero BL (BL=PL=CI=CE), referencia PO, datas (CI=PL entre si). '
-      + 'Importador: nome e CNPJ importador (igual em todos). '
-      + 'Comprador Final: nome e CNPJ do buyer/encomendante (igual em CI e PL — pode ser diferente do importador, isso e NORMAL e NAO e divergencia). '
-      + 'Exportador: nome shipper/exportador, endereco, notify party, fabricante. '
-      + 'Mercadoria: descricao, marca, medida, modelo, PR, LI/SR, quantidade (CI=PL=BL=CE). '
-      + 'Valores: preco unitario, valor total, incoterm, condicoes de pagamento (PI=CI obrigatorio), dados bancarios (identicos em todos). '
-      + 'Pesos: peso bruto (CI=PL=BL=CE normalizado), peso liquido, CBM. '
-      + 'Logistica: porto origem, porto destino, container, lacre, NCM, free time, frete, prepaid/collect, wooden. '
-      + 'CE Mercante: BL no CE (=BL), CNPJ importador no CE (=importador), portos, peso, NCM, container, quantidade. Data CE = APENAS on board date do BL. '
-      + 'Pais de Origem: pais de origem (CI=PL=CE). '
+      + 'Cruzar TODOS os campos entre TODOS os documentos presentes. '
+      + '(A) Campo presente em um doc e ausente em outro = DIVERGENCIA. '
+      + '(B) Dados bancarios devem ser identicos em todos os docs onde aparecem. '
+      + '(C) Usar sempre o nome real do documento. '
+      + 'Grupos: Identificacao (invoice, BL, PO, datas) | Importador (nome, CNPJ) | Comprador Final (buyer, diferente do importador e normal) | Exportador (shipper, notify, fabricante) | Mercadoria (descricao, marca, medida, modelo, PR, quantidade) | Valores (preco, total, incoterm, pagamento, dados bancarios) | Pesos (bruto, liquido, CBM) | Logistica (portos, container, lacre, NCM, frete, prepaid/collect, wooden) | CE Mercante (BL, CNPJ importador, portos, peso, NCM, container, quantidade) | Pais de Origem. '
       + '\n=== PASSO 3: CODIGOS EUDEMON === '
-      + 'Se marca for EUDEMON, verificar codigo em CI, PI e PL: '
+      + 'Se marca EUDEMON, verificar codigo em CI PI PL: '
       + '3301000094ab=275/80R22.5 UD188 149/146L 18PR | 3302001532eu=275/80R22.5 UF195 149/146L 18PR | 3302002217=295/80R22.5 UD188 154/149L 18PR | 3302002218=295/80R22.5 UF195 154/149M 18PR | 3302002429=295/80R22.5 UD223 154/149K 18PR | 3302001815ab=235/75R17.5 18PR 143/141L TL UD188 | 3302001861ab=215/75R17.5 16PR 135/133L TL UD188 | 3302001609ab=215/75R17.5 16PR 135/133L TL UF195 | 3302001608ab=235/75R17.5 18PR 143/141L TL UF195. '
-      + 'Codigo errado ou ausente para medida EUDEMON = DIVERGENCIA no grupo Codigos EUDEMON. '
+      + 'Codigo errado ou ausente = DIVERGENCIA no grupo Codigos EUDEMON. '
       + '\n=== REGRAS ESPECIAIS === '
       + 'FOB + Collect = correto. FOB + Prepaid = ALERTA. CIF/CFR + Prepaid = correto. CIF/CFR + Collect = ALERTA. '
-      + 'Consignatario BL/CE = sempre o importador/despachante. Buyer CI/PL = encomendante. Papeis diferentes, nao e divergencia. '
-      + 'CNPJ importador no BL/CE difere do CNPJ buyer na CI/PL = normal. '
-      + 'Transbordo: navio pode diferir CI/PL vs BL em caso de transbordo. '
+      + 'Consignatario BL/CE = sempre o importador. Buyer CI/PL = encomendante. Papeis diferentes, nao e divergencia. '
+      + 'CNPJ importador no BL/CE diferente do CNPJ buyer na CI/PL = normal. '
+      + 'Transbordo: navio pode diferir CI/PL vs BL. '
       + 'Numeros: 17.548,00 = 17.548,000 = 17548. Normalizar antes de comparar. '
-      + 'Datas: extrair dia+mes+ano. 2026-03-23 = 23/03/2026. Mesmo dia+mes+ano = OK. '
+      + 'Datas: 2026-03-23 = 23/03/2026. Mesmo dia+mes+ano = OK. '
       + 'Data CE: comparar APENAS com on board date do BL, nunca com data CI/PL. '
       + 'Retorne APENAS o JSON.';
+
+    content.push({type:'text',text:prompt});
     content.push({type:'text',text:prompt});
 
     setStep(3);
