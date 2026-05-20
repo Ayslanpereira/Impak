@@ -847,7 +847,7 @@ function guessType(name){
   if(m('draft.{0,5}(bl|hbl|obl|mbl)')||m('(bl|hbl|obl|mbl).{0,5}draft')) return 'bl_draft';
   if(b.includes('draft')&&(b.includes('bl')||b.includes('lading'))) return 'bl_draft';
   // BL Original
-  if(m(sep+'obl'+sep)||m(sep+'obl$')||m('^obl'+sep)) return 'bl_original';
+  if(m(sep+'(obl|ohbl)'+sep)||m(sep+'(obl|ohbl)$')||m('^(obl|ohbl)'+sep)) return 'bl_original';
   if(b.includes('original')&&(b.includes('bl')||b.includes('lading'))) return 'bl_original';
   // Generic BL
   if(m(sep+'(hbl|mbl|bl)'+sep)||m(sep+'(hbl|mbl|bl)$')||m('^(hbl|mbl|bl)'+sep)) return 'bl';
@@ -1057,7 +1057,7 @@ async function toB64(file){
 function setStep(n){
   for(let i=1;i<=4;i++){
     const el=document.getElementById('s'+i);
-    el.className='step'+(i<n?' done':i===n?' active':'');
+    if(el) el.className='step'+(i<n?' done':i===n?' active':'');
   }
 }
 
@@ -1084,78 +1084,23 @@ async function runAnalysis(){
 
     const docList=[...new Set(Object.values(uploadedFiles).map(f=>DOC_LBL[f.type]))].join(', ');
 
-    const prompt = 'Retorne APENAS JSON puro sem markdown. Voce e especialista em conferencia documental de importacao de pneus da Asia para o Brasil. '
-      + 'Documentos enviados nesta analise: ' + docList + '. '
-      + 'JSON obrigatorio: {"resumo":{"campos_ok":0,"divergencias":0,"alertas":0},"grupos":[{"titulo":"string","campos":[{"campo":"string","doc1_label":"string","doc1_valor":"string","doc2_label":"string","doc2_valor":"string","status":"OK","observacao":null}]}],"alertas":["string"]}. '
-      + 'REGRA GERAL: Sempre usar o nome real do documento (CI, PL, BL, CE Mercante, PI). NUNCA escrever Documento 1 ou Documento 2. '
-      + 'Mostrar APENAS o que esta errado ou ausente. O que estiver correto nao precisa aparecer. '
-      + '\n=== PASSO 1: CAMPOS OBRIGATORIOS === '
-      + 'Se um campo obrigatorio estiver ausente, gerar DIVERGENCIA com status AUSENTE. '
-      + '\nPI e CI devem conter: '
-      + '(1) Nome e endereco completo do exportador. '
-      + '(2) Nome e endereco completo do importador. '
-      + '(3) Dados do encomendante/adquirente (alertar se indicado mas incompleto). '
-      + '(4) Forma e moeda de pagamento. '
-      + '(5) Porto de origem. '
-      + '(6) Porto de destino. '
-      + '(7) Descricao detalhada dos itens. '
-      + '(8) Marca, numeracao e referencia dos volumes. '
-      + '(9) Quantidade e especie dos volumes. '
-      + '(10) Valores unitarios e totais. '
-      + '(11) Descontos ou reducoes (alertar apenas se indicado sem valor). '
-      + '(12) Peso bruto e peso liquido. '
-      + '(13) Incoterm. '
-      + '(14) Pais de origem. '
-      + '(15) Pais de aquisicao. '
-      + '(16) Pais de procedencia. '
-      + '(17) Dados bancarios do exportador (banco, conta, SWIFT). '
-      + '(18) Frete internacional: obrigatorio se Incoterm diferente de FOB. Se FOB, nao precisa. Se diferente de FOB e ausente = DIVERGENCIA CRITICA. '
-      + 'REGRA PI vs CI: PI e CI devem ser identicas. Para qualquer diferenca gerar DIVERGENCIA: doc1_label=PI, doc2_label=CI. '
-      + '\nPL deve conter: '
-      + '(1) Dados completos do importador. '
-      + '(2) Dados do encomendante (alertar se Buyer preenchido na PI/CI mas ausente no PL). '
-      + '(3) Porto de origem. '
-      + '(4) Porto de destino. '
-      + '(5) Descricao dos itens. '
-      + '(6) Quantidade e especie dos volumes. '
-      + '(7) Pesos unitarios e totais. '
-      + '(8) Peso bruto e peso liquido. '
-      + '(9) Descricao do produto com referencia a pneu: palavras aceitas TIRE TIRES TYRE TYRES PNEU RADIAL TRUCK TIRE. Se nenhuma dessas = DIVERGENCIA. '
-      + '(10) Pais de origem. '
-      + '(11) Pais de aquisicao. '
-      + '(12) Endereco do fabricante. '
-      + '(13) Marca e numeracao dos volumes. '
-      + '(14) Container/BL/lacre: OPCIONAL, nao alertar se ausente. '
-      + '\nBL deve conter: '
-      + '(1) Shipper. (2) Notify party. (3) Consignee. '
-      + '(4) Porto de origem. (5) Porto de destino. '
-      + '(6) Peso bruto. (7) Quantidade. (8) NCM. (9) Descricao do produto. '
-      + '(10) Free time. (11) Valor do frete. (12) Frete Prepaid ou Collect. '
-      + '(13) Container e lacre: se PI/CI/PL tiverem, deve ser identico no BL. '
-      + '(14) Informacao sobre madeira: deve constar se tem ou nao. Palavras aceitas: WOODEN WOOD PALLET NO WOOD NOT APPLICABLE. Se nenhuma = DIVERGENCIA. '
-      + '\nCE Mercante: cruzar dados de navio com campo Transbordo/Baldeacao do CE. Se em branco ou -, usar dados do manifesto. Numero do CE nao precisa cruzar com nenhum doc. '
-      + '\n=== PASSO 2: CRUZAMENTO ENTRE DOCUMENTOS === '
-      + 'Cruzar TODOS os campos entre TODOS os documentos presentes. '
-      + '(A) Campo presente em um doc e ausente em outro = DIVERGENCIA. '
-      + '(B) Dados bancarios devem ser identicos em todos os docs onde aparecem. '
-      + '(C) Usar sempre o nome real do documento. '
-      + 'Grupos: Identificacao (invoice, BL, PO, datas) | Importador (nome, CNPJ) | Comprador Final (buyer, diferente do importador e normal) | Exportador (shipper, notify, fabricante) | Mercadoria (descricao, marca, medida, modelo, PR, quantidade) | Valores (preco, total, incoterm, pagamento, dados bancarios) | Pesos (bruto, liquido, CBM) | Logistica (portos, container, lacre, NCM, frete, prepaid/collect, wooden) | CE Mercante (BL, CNPJ importador, portos, peso, NCM, container, quantidade) | Pais de Origem. '
-      + '\n=== PASSO 3: CODIGOS EUDEMON === '
-      + 'Se marca EUDEMON, verificar codigo em CI PI PL: '
-      + '3301000094ab=275/80R22.5 UD188 149/146L 18PR | 3302001532eu=275/80R22.5 UF195 149/146L 18PR | 3302002217=295/80R22.5 UD188 154/149L 18PR | 3302002218=295/80R22.5 UF195 154/149M 18PR | 3302002429=295/80R22.5 UD223 154/149K 18PR | 3302001815ab=235/75R17.5 18PR 143/141L TL UD188 | 3302001861ab=215/75R17.5 16PR 135/133L TL UD188 | 3302001609ab=215/75R17.5 16PR 135/133L TL UF195 | 3302001608ab=235/75R17.5 18PR 143/141L TL UF195. '
-      + 'Codigo errado ou ausente = DIVERGENCIA no grupo Codigos EUDEMON. '
-      + '\n=== REGRAS ESPECIAIS === '
-      + 'FOB + Collect = correto. FOB + Prepaid = ALERTA. CIF/CFR + Prepaid = correto. CIF/CFR + Collect = ALERTA. '
-      + 'Consignatario BL/CE = sempre o importador. Buyer CI/PL = encomendante. Papeis diferentes, nao e divergencia. '
-      + 'CNPJ importador no BL/CE diferente do CNPJ buyer na CI/PL = normal. '
-      + 'Transbordo: navio pode diferir CI/PL vs BL. '
-      + 'Numeros: 17.548,00 = 17.548,000 = 17548. Normalizar antes de comparar. '
-      + 'Datas: 2026-03-23 = 23/03/2026. Mesmo dia+mes+ano = OK. '
-      + 'Data CE: comparar APENAS com on board date do BL, nunca com data CI/PL. '
-      + 'Retorne APENAS o JSON.';
+    const prompt = 'JSON ONLY. No markdown. Especialista em conferencia documental importacao pneus Brasil. '
+      + 'Docs: '+docList+'. '
+      + 'Schema: {"resumo":{"campos_ok":0,"divergencias":0,"alertas":0},"grupos":[{"titulo":"","campos":[{"campo":"","doc1_label":"","doc1_valor":"","doc2_label":"","doc2_valor":"","status":"OK","observacao":null}]}],"alertas":[""]}. '
+      + 'REGRA GERAL: Mostrar APENAS erros. Usar nome real do doc (CI,PL,BL,PI,CE). Nunca "Documento 1". '
+      + 'PASSO 1 - CAMPOS OBRIGATORIOS: '
+      + 'CI/PI: exportador(nome+end), importador(nome+end), encomendante(se houver), forma+moeda pagamento, porto origem, porto destino, descricao itens, marca+ref volumes, qtd+especie volumes, valores unit+total, peso bruto+liquido, incoterm, pais origem+aquisicao+procedencia, dados bancarios. SE incoterm!=FOB: frete internacional obrigatorio. PI e CI devem ser identicas - qualquer diferenca=DIVERGENCIA com doc1_label=PI doc2_label=CI. '
+      + 'PL: importador, encomendante(se buyer preenchido na PI/CI), porto origem+destino, descricao itens, qtd+especie, pesos unit+totais, peso bruto+liquido, produto(deve conter TIRE/TYRE/PNEU/RADIAL senao DIVERGENCIA), pais origem+aquisicao, end fabricante, marca+numeracao volumes. Container/BL/lacre=OPCIONAL. '
+      + 'BL: shipper, notify, consignee, porto origem+destino, peso, qtd, NCM, descricao, free time, valor frete, prepaid/collect, container+lacre(se constar PI/CI/PL deve ser identico), wooden(WOODEN/WOOD/PALLET/NOT APPLICABLE obrigatorio senao DIVERGENCIA). '
+      + 'CE: cruzar navio/embarque pelo campo Transbordo/Baldeacao(se vazio usar manifesto). Numero CE nao cruzar. '
+      + 'PASSO 2 - CRUZAMENTO: Comparar todos campos entre todos docs. Campo presente num doc e ausente em outro=DIVERGENCIA. Dados bancarios identicos em todos. '
+      + 'Grupos: Identificacao|Importador|Comprador Final(buyer!=importador=normal)|Exportador|Mercadoria|Valores|Pesos|Logistica|CE Mercante|Pais Origem. '
+      + 'PASSO 3 - EUDEMON: Se marca EUDEMON verificar codigo em CI/PI/PL: 3301000094ab=275/80R22.5 UD188 149/146L 18PR|3302001532eu=275/80R22.5 UF195 149/146L 18PR|3302002217=295/80R22.5 UD188 154/149L 18PR|3302002218=295/80R22.5 UF195 154/149M 18PR|3302002429=295/80R22.5 UD223 154/149K 18PR|3302001815ab=235/75R17.5 UD188 143/141L 18PR|3302001861ab=215/75R17.5 UD188 135/133L 16PR|3302001609ab=215/75R17.5 UF195 135/133L 16PR|3302001608ab=235/75R17.5 UF195 143/141L 18PR. '
+      + 'REGRAS ESPECIAIS: FOB+Collect=OK, FOB+Prepaid=ALERTA. CIF/CFR+Prepaid=OK, CIF/CFR+Collect=ALERTA. Consignatario BL/CE=importador(normal). CNPJ importador!=CNPJ buyer=normal. Transbordo=navio pode diferir. Numeros: 17.548,00=17548. Datas: 2026-03-23=23/03/2026. Data CE comparar APENAS com on board date BL.';
 
     content.push({type:'text',text:prompt});
-    content.push({type:'text',text:prompt});
+
+
 
     setStep(3);
 
@@ -1826,6 +1771,7 @@ if(divergResolved[key]){
 }
 }
 }
+}
 
 
 function copyDivergencias(){
@@ -2118,62 +2064,6 @@ function emailSection(sectionDivs, sectionKey, ref){
 function copyOneDivPT(i){ var divs=getDivergencias(); copySectionText([divs[i]],'','pt'); }
 function copyOneDivEN(i){ var divs=getDivergencias(); copySectionText([divs[i]],'','en'); }
 function emailOneDiv(i){ var divs=getDivergencias(); emailSection([divs[i]],'docs',''); }
-
-// ─── ANALYSIS SYSTEM ─────────────────────────────────────────────────
-var ETAPA_HINTS = {
-  '1': {icon:'📋', text:'Etapa 1 — Envie a PI/Sales Contract e o Packing List para análise inicial dos campos obrigatórios e cruzamento entre eles.'},
-  '2': {icon:'🚢', text:'Etapa 2 — Envie o Draft BL junto com os demais documentos. O sistema cruzará tudo e alertará qualquer divergência.'},
-  '3': {icon:'⚓', text:'Etapa 3 — Envie o BL Original. O sistema confirma se as correções foram aplicadas.'},
-  '4': {icon:'🏛️', text:'Etapa 4 — Envie o CE Mercante com todos os documentos para a conferência final completa.'}
-};
-
-function updateEtapaHint(){
-  var sel = document.getElementById('etapaSelect');
-  var icon = document.getElementById('etapaHintIcon');
-  var txt = document.getElementById('etapaHintText');
-  if(!sel||!txt) return;
-  var h = ETAPA_HINTS[sel.value]||ETAPA_HINTS['1'];
-  if(icon) icon.textContent = h.icon;
-  txt.textContent = h.text;
-}
-
-function autoFillProcess(){
-  var ref = document.getElementById('procRef').value.trim();
-  var statusEl = document.getElementById('procStatus');
-  var statusTxt = document.getElementById('procStatusText');
-  if(!ref){ if(statusEl) statusEl.style.display='none'; return; }
-  var procs = getProcesses();
-  var existing = procs.find(function(p){ return p.ref===ref; });
-  if(!existing){ if(statusEl) statusEl.style.display='none'; return; }
-  // Auto fill exportador
-  var expEl = document.getElementById('procExp');
-  if(expEl && !expEl.value && existing.exportador) expEl.value = existing.exportador;
-  // Show process status
-  var analises = existing.analises||[];
-  var lastAnalise = analises.length ? analises[analises.length-1] : null;
-  if(statusEl && statusTxt){
-    var msg = '📁 Processo existente — '+analises.length+' análise(s) registrada(s).';
-    if(lastAnalise){
-      msg += ' Última: '+lastAnalise.data+' ('+lastAnalise.docs+')';
-      var divCount = lastAnalise.resumo ? lastAnalise.resumo.divergencias : 0;
-      msg += divCount>0 ? ' — ⚠ '+divCount+' divergência(s) pendente(s).' : ' — ✓ Sem divergências.';
-    }
-    msg += ' Adicione os novos documentos recebidos e analise novamente.';
-    statusTxt.textContent = msg;
-    statusEl.style.display = 'flex';
-    statusEl.style.background = 'var(--accent-dim)';
-  }
-  showToast('Processo '+ref+' encontrado — '+analises.length+' análise(s)','ok');
-}
-
-// ─── TOAST ───────────────────────────────────────────────────────────
-function showToast(msg,type='ok'){
-  const t=document.getElementById('toast');
-  t.textContent=msg;
-  t.className='toast '+type+' show';
-  setTimeout(()=>t.className='toast',3000);
-}
-
-}</script>
+</script>
 </body>
 </html>
