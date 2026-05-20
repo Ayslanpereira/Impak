@@ -1342,49 +1342,46 @@ function renderProcessos(filter){
   var q=(filter||'').toLowerCase().trim();
   if(q){
     procs=procs.filter(function(p){
-      var searchStr=[
-        p.ref||'', p.exportador||'', p.obs||'',
-        (p.analises||[]).map(function(a){return a.docs||'';}).join(' '),
-        (p.log||[]).map(function(l){return l.msg||'';}).join(' ')
+      var s=[p.ref||'',p.exportador||'',p.obs||'',
+        (p.analises||[]).map(function(a){return a.docs||'';}).join(' ')
       ].join(' ').toLowerCase();
-      return searchStr.includes(q);
+      return s.includes(q);
     });
   }
-
   var list=document.getElementById('processosList');
   if(!list) return;
   if(!procs.length){
-    list.innerHTML='<div style="text-align:center;color:var(--text-dim);font-size:13px;padding:32px 0;">'+(q?'Nenhum resultado para "'+q+'"':'Nenhum processo encontrado.')+'</div>';
+    list.innerHTML='<div style="text-align:center;color:var(--text-dim);font-size:13px;padding:32px 0;">'+(q?'Sem resultados para "'+q+'"':'Nenhum processo encontrado.')+'</div>';
     return;
   }
   list.innerHTML=procs.map(function(p){
-    var statusColors={ok:'var(--ok)',warn:'var(--warn)',err:'var(--danger)'};
-    var statusIcons={ok:'✓',warn:'⚠',err:'✗'};
-    var sc=statusColors[p.status]||'#94a3b8';
-    var si=statusIcons[p.status]||'—';
-    var analises=(p.analises||[]);
-    var lastA=analises.length?analises[analises.length-1]:null;
-    var divCount=lastA&&lastA.resumo?lastA.resumo.divergencias:0;
-    var alertCount=lastA&&lastA.resumo?lastA.resumo.alertas:0;
-    return '<div class="proc-card" onclick="openProcess('+p.id+')" style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:16px;margin-bottom:10px;cursor:pointer;">';
-      +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">'
+    var analises=p.analises||[];
+    var last=analises.length?analises[analises.length-1]:null;
+    var divs=last&&last.resumo?last.resumo.divergencias:0;
+    var alerts=last&&last.resumo?last.resumo.alertas:0;
+    var badge=divs
+      ?'<span style="color:var(--danger);font-size:11px;font-weight:700;">✗ '+divs+' diverg.</span>'
+      :alerts
+      ?'<span style="color:var(--warn);font-size:11px;font-weight:700;">⚠ '+alerts+' alertas</span>'
+      :'<span style="color:var(--ok);font-size:11px;font-weight:700;">✓ OK</span>';
+    return '<div data-proc-id="'+p.id+'" style="background:var(--surface);border:1px solid var(--border2);border-radius:8px;padding:16px;margin-bottom:10px;cursor:pointer;">'
+      +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">'
       +'<div style="display:flex;align-items:center;gap:10px;">'
-      +'<span style="font-size:16px;font-weight:800;color:var(--accent);font-family:monospace;">'+p.ref+'</span>'
+      +'<span style="font-size:15px;font-weight:800;color:var(--accent);font-family:monospace;">'+p.ref+'</span>'
       +'<span style="font-size:11px;color:var(--text-dim);">'+(p.exportador||'')+'</span>'
-      +'</div>'
-      +'<div style="display:flex;align-items:center;gap:6px;">'
-      +(divCount?'<span style="font-size:10px;padding:2px 8px;border-radius:100px;background:rgba(220,38,38,0.1);color:var(--danger);font-family:monospace;">✗ '+divCount+' diverg.</span>':'')
-      +(alertCount?'<span style="font-size:10px;padding:2px 8px;border-radius:100px;background:rgba(217,119,6,0.1);color:var(--warn);font-family:monospace;">⚠ '+alertCount+' alertas</span>':'')
-      +(!divCount&&!alertCount?'<span style="font-size:10px;padding:2px 8px;border-radius:100px;background:rgba(22,163,74,0.1);color:var(--ok);font-family:monospace;">✓ OK</span>':'')
-      +'</div></div>'
-      +'<div style="display:flex;gap:16px;font-size:11px;color:var(--text-dim);">'
+      +'</div>'+badge+'</div>'
+      +'<div style="display:flex;flex-wrap:wrap;gap:12px;font-size:11px;color:var(--text-dim);">'
       +'<span>'+p.data+'</span>'
       +'<span>'+analises.length+' análise(s)</span>'
-      +(lastA?'<span>Última: '+lastA.data+'</span>':'')
-      +(lastA?'<span>'+lastA.docs+'</span>':'')
-      +'</div>'
-      +'</div>';
+      +(last?'<span>Última: '+last.data+'</span>':'')
+      +(last?'<span style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+last.docs+'</span>':'')
+      +'</div></div>';
   }).join('');
+  // Click handler via delegation
+  list.onclick=function(e){
+    var card=e.target.closest('[data-proc-id]');
+    if(card) openProcess(parseInt(card.getAttribute('data-proc-id')));
+  };
 }
 
 
