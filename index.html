@@ -679,7 +679,7 @@ textarea.field-input{resize:vertical;min-height:80px;}
 
 <!-- CONFERÊNCIA -->
 
-<div class="page" id="page-conferencia" ondragover="this.classList.add('page-drag')" ondragleave="if(!event.relatedTarget)this.classList.remove('page-drag')" ondrop="this.classList.remove('page-drag')">
+<div class="page" id="page-conferencia">
   <div class="page-header">
     <div>
       <div class="page-title">Nova <span>Conferência</span></div>
@@ -895,6 +895,29 @@ function extractAlert(a){
   return String(a||'');
 }
 
+
+function setupDropZone(){
+  var dz = document.getElementById('dropZone');
+  if(!dz || dz._dzReady) return;
+  dz._dzReady = true;
+  dz.addEventListener('dragover', function(e){
+    e.preventDefault();
+    e.stopPropagation();
+    dz.classList.add('drag');
+  });
+  dz.addEventListener('dragleave', function(e){
+    e.stopPropagation();
+    if(!dz.contains(e.relatedTarget)) dz.classList.remove('drag');
+  });
+  dz.addEventListener('drop', function(e){
+    e.preventDefault();
+    e.stopPropagation();
+    dz.classList.remove('drag');
+    var files = Array.from(e.dataTransfer.files||[]);
+    if(files.length) handleFiles(files);
+  });
+}
+
 // ─── END EARLY DECLARATIONS ───────────────────────────────────────────
 
 
@@ -1073,31 +1096,8 @@ function saveApiKeyBtn(){
 window.onload = function(){
   // Don't load anything - wait for login
   // loginScreen is shown by default (display:flex in HTML)
-  // Drag and drop - document level (works regardless of page visibility)
-  document.addEventListener('dragover', function(e){ e.preventDefault(); });
-  document.addEventListener('drop', function(e){
-    e.preventDefault();
-    var page = document.getElementById('page-conferencia');
-    if(!page || !page.classList.contains('active')) return;
-    var files = e.dataTransfer ? Array.from(e.dataTransfer.files) : [];
-    if(!files.length) return;
-    handleFiles(files);
-    var dz = document.getElementById('dropZone');
-    if(dz) dz.classList.remove('drag');
-    showToast(files.length+' arquivo(s) adicionado(s)','ok');
-  });
-  document.addEventListener('dragenter', function(e){
-    e.preventDefault();
-    var page = document.getElementById('page-conferencia');
-    var dz = document.getElementById('dropZone');
-    if(page && page.classList.contains('active') && dz) dz.classList.add('drag');
-  });
-  document.addEventListener('dragleave', function(e){
-    if(e.relatedTarget) return;
-    var dz = document.getElementById('dropZone');
-    if(dz) dz.classList.remove('drag');
-  });
-  // Restore API key from localStorage
+  // Drag and drop - set up on showPage('conferencia')
+  // (dropZone starts hidden, so we set up listeners when page becomes visible)
   try{
     var saved = localStorage.getItem('impak_apikey');
     if(saved && saved.length > 20){
@@ -1117,7 +1117,7 @@ function showPage(id){
     if(n.getAttribute('onclick')&&n.getAttribute('onclick').includes(id)) n.classList.add('active');
   });
   if(id==='dashboard') renderDashboard();
-  if(id==='conferencia'){ var ra2=document.getElementById('resultArea'); if(ra2) ra2.style.display='none'; }
+  if(id==='conferencia'){ var ra2=document.getElementById('resultArea'); if(ra2) ra2.style.display='none'; } setupDropZone();
   if(id==='processos'){ var ps=document.getElementById('procSearch'); if(ps) ps.value=''; renderProcessos(''); }
   if(id==='processos') renderProcessos();
   window.scrollTo(0,0);
