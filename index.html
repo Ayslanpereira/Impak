@@ -519,6 +519,26 @@ textarea.field-input{resize:vertical;min-height:80px;}
 </head>
 <body>
 
+<!-- LOGIN SCREEN -->
+<div id="loginScreen" style="position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;z-index:9999;">
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:48px 40px;width:380px;box-shadow:0 8px 32px rgba(0,0,0,0.12);">
+    <div style="text-align:center;margin-bottom:32px;">
+      <div style="font-size:32px;font-weight:900;color:var(--accent);font-family:monospace;letter-spacing:-1px;">IMPAK</div>
+      <div style="font-size:13px;color:var(--text-dim);margin-top:4px;">Conferência Documental de Importação</div>
+    </div>
+    <div class="field-group">
+      <label class="field-label">Usuário</label>
+      <input class="field-input" id="loginUser" placeholder="Seu nome de usuário" oninput="loginClearErr()">
+    </div>
+    <div class="field-group">
+      <label class="field-label">Senha</label>
+      <input class="field-input" id="loginPass" type="password" placeholder="Sua senha" oninput="loginClearErr()" onkeydown="if(event.key==='Enter')doLogin()">
+    </div>
+    <div id="loginErr" style="display:none;color:var(--danger);font-size:12px;margin-bottom:12px;text-align:center;"></div>
+    <button class="btn btn-primary" style="width:100%;margin-top:8px;" onclick="doLogin()">Entrar</button>
+  </div>
+</div>
+
 <div class="shell">
 <!-- Sidebar -->
 <aside class="sidebar">
@@ -531,6 +551,13 @@ textarea.field-input{resize:vertical;min-height:80px;}
     </div>
     <div class="logo-sub">Sistema de Gestão · Importação</div>
   </div>
+  <div id="userBadge" style="padding:10px 16px;margin:0 8px 8px;background:var(--accent-dim);border-radius:8px;display:flex;align-items:center;justify-content:space-between;">
+    <div>
+      <div id="userBadgeName" style="font-size:12px;font-weight:700;color:var(--accent);"></div>
+      <div id="userBadgeRole" style="font-size:10px;color:var(--text-dim);"></div>
+    </div>
+    <button onclick="doLogout()" style="font-size:10px;color:var(--text-dim);background:none;border:none;cursor:pointer;padding:4px 6px;border-radius:4px;">↩ Sair</button>
+  </div>
   <nav class="nav">
     <div class="nav-item active" onclick="showPage('dashboard')">
       <span class="nav-icon">📊</span>
@@ -539,6 +566,10 @@ textarea.field-input{resize:vertical;min-height:80px;}
     <div class="nav-item" onclick="showPage('processos')">
       <span class="nav-icon">📁</span>
       <span class="nav-label">Processos</span>
+    </div>
+    <div class="nav-item" id="navGestao" style="display:none;" onclick="showPage('gestao')">
+      <span class="nav-icon">👔</span>
+      <span class="nav-label">Gestão</span>
     </div>
     <div class="nav-item" onclick="showPage('conferencia')">
       <span class="nav-icon">🔍</span>
@@ -604,7 +635,47 @@ textarea.field-input{resize:vertical;min-height:80px;}
   <div id="processosList"></div>
 </div>
 
+<!-- GESTÃO (manager view) -->
+<div class="page" id="page-gestao">
+  <div class="page-header">
+    <div>
+      <div class="page-title">Gestão</div>
+      <div class="page-sub">Visão gerencial de todos os processos</div>
+    </div>
+  </div>
+  <div style="display:flex;gap:10px;margin-bottom:16px;align-items:center;flex-wrap:wrap;">
+    <div style="position:relative;flex:1;min-width:200px;">
+      <span style="position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--text-dim);font-size:14px;">🔍</span>
+      <input class="field-input" id="gestaoSearch" placeholder="Buscar por referência, exportador, BL..." oninput="renderGestao()" style="padding-left:36px;font-size:13px;">
+    </div>
+    <select class="field-input" id="gestaoUser" onchange="renderGestao()" style="width:180px;font-size:13px;">
+      <option value="">Todos os usuários</option>
+    </select>
+    <select class="field-input" id="gestaoStatus" onchange="renderGestao()" style="width:160px;font-size:13px;">
+      <option value="">Todos os status</option>
+      <option value="err">Com divergências</option>
+      <option value="warn">Com alertas</option>
+      <option value="ok">Sem divergências</option>
+    </select>
+  </div>
+  <div id="gestaoStats" style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px;"></div>
+  <div id="gestaoList"></div>
+</div>
+
+<!-- GESTÃO MODAL - approval -->
+<div class="modal-bg" id="gestaoModalBg" onclick="closeGestaoModal(event)" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;align-items:center;justify-content:center;">
+  <div class="modal" style="max-width:720px;width:95%;max-height:85vh;overflow-y:auto;">
+    <div class="modal-title" id="gestaoModalTitle">Processo</div>
+    <div class="modal-sub" id="gestaoModalSub"></div>
+    <div id="gestaoModalBody"></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost btn-sm" onclick="closeGestaoModal()">Fechar</button>
+    </div>
+  </div>
+</div>
+
 <!-- CONFERÊNCIA -->
+
 <div class="page" id="page-conferencia">
   <div class="page-header">
     <div>
@@ -870,6 +941,94 @@ function guessType(name){
   return 'outros';
 }
 
+
+// ─── USER SYSTEM ──────────────────────────────────────────────────────
+var USERS = [
+  { username: 'paula',    password: '1234', role: 'gerente',  displayName: 'Paula' },
+  { username: 'emanuele', password: '1234', role: 'analista', displayName: 'Emanuele' },
+];
+
+var _currentUser = null;
+
+function getCurrentUser(){ return _currentUser; }
+
+function doLogin(){
+  var u = (document.getElementById('loginUser').value||'').trim().toLowerCase();
+  var p = (document.getElementById('loginPass').value||'').trim();
+  var found = USERS.find(function(x){ return x.username===u && x.password===p; });
+  if(!found){
+    document.getElementById('loginErr').textContent='Usuário ou senha incorretos.';
+    document.getElementById('loginErr').style.display='block';
+    return;
+  }
+  _currentUser = found;
+  document.getElementById('loginScreen').style.display='none';
+  // Show user badge
+  document.getElementById('userBadgeName').textContent = found.displayName;
+  document.getElementById('userBadgeRole').textContent = found.role==='gerente'?'Gerente':'Analista';
+  // Show gestao tab for manager
+  if(found.role==='gerente'){
+    document.getElementById('navGestao').style.display='flex';
+  }
+  // Load user processes
+  _processes = loadUserProcesses();
+  _processes = migrateAlerts(_processes);
+  updateApiStatus();
+  renderDashboard();
+  renderProcessos();
+  showPage('dashboard');
+}
+
+function loginClearErr(){
+  document.getElementById('loginErr').style.display='none';
+}
+
+function doLogout(){
+  _currentUser=null;
+  _processes=[];
+  document.getElementById('loginUser').value='';
+  document.getElementById('loginPass').value='';
+  document.getElementById('loginScreen').style.display='flex';
+  document.getElementById('navGestao').style.display='none';
+}
+
+function getUserKey(){
+  if(!_currentUser) return 'impak_processes';
+  return 'impak_processes_'+_currentUser.username;
+}
+
+function loadUserProcesses(){
+  try{
+    var raw = localStorage.getItem(getUserKey());
+    return JSON.parse(raw||'[]');
+  }catch(e){ return []; }
+}
+
+function getAllProcesses(){
+  // Returns all processes from all users with user info
+  var all = [];
+  USERS.forEach(function(u){
+    try{
+      var procs = JSON.parse(localStorage.getItem('impak_processes_'+u.username)||'[]');
+      procs.forEach(function(p){
+        all.push(Object.assign({}, p, {_user: u.username, _userName: u.displayName}));
+      });
+    }catch(e){}
+  });
+  // Also legacy key
+  try{
+    var legacy = JSON.parse(localStorage.getItem('impak_processes')||'[]');
+    legacy.forEach(function(p){
+      if(!all.find(function(x){return x.id===p.id;})){
+        all.push(Object.assign({}, p, {_user:'?', _userName:'Legado'}));
+      }
+    });
+  }catch(e){}
+  all.sort(function(a,b){return (b.id||0)-(a.id||0);});
+  return all;
+}
+
+
 // ─── STORAGE ─────────────────────────────────────────────────────────
 // Session storage - works everywhere
 let _apiKey = '';
@@ -886,7 +1045,7 @@ function migrateAlerts(procs){
     return p;
   });
 }
-function saveProcesses(p){ _processes=p; try{ localStorage.setItem('impak_processes',JSON.stringify(p)); }catch(e){} }
+function saveProcesses(p){ _processes=p; try{ localStorage.setItem(getUserKey(),JSON.stringify(p)); }catch(e){} }
 function getApiKey(){ return _apiKey; }
 function saveApiKey(v){ _apiKey=v.trim(); try{ localStorage.setItem('impak_apikey',v.trim()); }catch(e){} updateApiStatus(); }
 function saveApiKeyBtn(){
@@ -909,27 +1068,27 @@ function saveApiKeyBtn(){
 
 // ─── INIT ────────────────────────────────────────────────────────────
 window.onload = function(){
-  // Try to restore key from localStorage
+  // Don't load anything - wait for login
+  // loginScreen is shown by default (display:flex in HTML)
+  // Drag and drop setup
+  var dz = document.getElementById('dropZone');
+  if(dz){
+    dz.addEventListener('dragover',function(e){e.preventDefault();dz.classList.add('drag');});
+    dz.addEventListener('dragleave',function(){dz.classList.remove('drag');});
+    dz.addEventListener('drop',function(e){
+      e.preventDefault();dz.classList.remove('drag');
+      handleFiles(Array.from(e.dataTransfer.files));
+    });
+  }
+  // Restore API key
   try{
-    const saved = localStorage.getItem('impak_apikey');
+    var saved = localStorage.getItem('impak_apikey');
     if(saved && saved.length > 20){
       _apiKey = saved.trim();
-      document.getElementById('apiKeyInput').value = saved.trim();
+      var inp = document.getElementById('apiKeyInput');
+      if(inp) inp.value = saved.trim();
     }
   }catch(e){}
-  // Migrate old saved processes
-  _processes = migrateAlerts(_processes);
-  try{ localStorage.setItem('impak_processes', JSON.stringify(_processes)); }catch(e){}
-  updateApiStatus();
-  updateApiStatus();
-  renderDashboard();
-  renderProcessos();
-
-  // Drag and drop
-  const dz = document.getElementById('dropZone');
-  dz.addEventListener('dragover',e=>{e.preventDefault();dz.classList.add('drag');});
-  dz.addEventListener('dragleave',()=>dz.classList.remove('drag'));
-  dz.addEventListener('drop',e=>{e.preventDefault();dz.classList.remove('drag');addFiles(e.dataTransfer.files);});
 }
 
 // ─── NAVIGATION ──────────────────────────────────────────────────────
@@ -1335,6 +1494,209 @@ function renderDashboard(){
       +'</div>';
   }).join('');
 }
+
+// ─── GESTÃO (manager view) ────────────────────────────────────────────
+function renderGestao(){
+  var q=(document.getElementById('gestaoSearch').value||'').toLowerCase();
+  var filterUser=document.getElementById('gestaoUser').value;
+  var filterStatus=document.getElementById('gestaoStatus').value;
+
+  var all = getAllProcesses();
+
+  // Populate user dropdown
+  var sel = document.getElementById('gestaoUser');
+  var existing = Array.from(sel.options).map(function(o){return o.value;});
+  USERS.forEach(function(u){
+    if(!existing.includes(u.username)){
+      var opt = document.createElement('option');
+      opt.value = u.username; opt.textContent = u.displayName;
+      sel.appendChild(opt);
+    }
+  });
+
+  // Filter
+  var procs = all.filter(function(p){
+    if(filterUser && p._user !== filterUser) return false;
+    if(filterStatus && p.status !== filterStatus) return false;
+    if(q){
+      var s=[p.ref||'',p.exportador||'',p._userName||'',
+        (p.analises||[]).map(function(a){return a.docs||'';}).join(' ')
+      ].join(' ').toLowerCase();
+      if(!s.includes(q)) return false;
+    }
+    return true;
+  });
+
+  // Stats
+  var stats = document.getElementById('gestaoStats');
+  var total=procs.length, errs=procs.filter(function(p){return p.status==='err';}).length,
+      warns=procs.filter(function(p){return p.status==='warn';}).length,
+      oks=procs.filter(function(p){return p.status==='ok';}).length;
+  stats.innerHTML=[
+    ['Total',total,'var(--accent)'],
+    ['Divergências',errs,'var(--danger)'],
+    ['Alertas',warns,'var(--warn)'],
+    ['OK',oks,'var(--ok)']
+  ].map(function(s){
+    return '<div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:16px;text-align:center;">'
+      +'<div style="font-size:28px;font-weight:700;color:'+s[2]+';">'+s[1]+'</div>'
+      +'<div style="font-size:11px;color:var(--text-dim);">'+s[0]+'</div></div>';
+  }).join('');
+
+  // List
+  var list = document.getElementById('gestaoList');
+  if(!procs.length){
+    list.innerHTML='<div style="text-align:center;color:var(--text-dim);padding:32px;">Nenhum processo encontrado.</div>';
+    return;
+  }
+  list.innerHTML = procs.map(function(p){
+    var analises=p.analises||[];
+    var last=analises.length?analises[analises.length-1]:null;
+    var divs=last&&last.resumo?last.resumo.divergencias:0;
+    var alerts=last&&last.resumo?last.resumo.alertas:0;
+    var badge=divs?'<span style="color:var(--danger);font-size:11px;font-weight:700;">✗ '+divs+' diverg.</span>'
+      :alerts?'<span style="color:var(--warn);font-size:11px;font-weight:700;">⚠ '+alerts+' alertas</span>'
+      :'<span style="color:var(--ok);font-size:11px;font-weight:700;">✓ OK</span>';
+    var approved = p._approved ? '<span style="color:var(--ok);font-size:10px;margin-left:6px;">✓ Aprovado por '+p._approvedBy+'</span>' : '';
+    var hasComment = p._managerComment ? '<span style="color:var(--accent);font-size:10px;margin-left:6px;">💬 comentário</span>' : '';
+    return '<div data-gestao-id="'+p.id+'" data-gestao-user="'+(p._user||'')+'" style="background:var(--surface);border:1px solid var(--border2);border-radius:8px;padding:16px;margin-bottom:10px;cursor:pointer;">'
+      +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">'
+      +'<div style="display:flex;align-items:center;gap:10px;">'
+      +'<span style="font-size:15px;font-weight:800;color:var(--accent);font-family:monospace;">'+p.ref+'</span>'
+      +'<span style="font-size:11px;color:var(--text-dim);">'+(p.exportador||'')+'</span>'
+      +'<span style="font-size:11px;padding:2px 8px;border-radius:100px;background:var(--accent-dim);color:var(--accent);">'+p._userName+'</span>'
+      +approved+hasComment
+      +'</div>'+badge+'</div>'
+      +'<div style="display:flex;flex-wrap:wrap;gap:12px;font-size:11px;color:var(--text-dim);">'
+      +'<span>'+p.data+'</span>'
+      +'<span>'+analises.length+' análise(s)</span>'
+      +(last?'<span>Última: '+last.data+'</span>':'')
+      +(last?'<span style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+last.docs+'</span>':'')
+      +'</div></div>';
+  }).join('');
+
+  list.onclick = function(e){
+    var card = e.target.closest('[data-gestao-id]');
+    if(card) openGestaoModal(parseInt(card.getAttribute('data-gestao-id')), card.getAttribute('data-gestao-user'));
+  };
+}
+
+function openGestaoModal(id, username){
+  var all = getAllProcesses();
+  var p = all.find(function(x){ return x.id===id && x._user===username; });
+  if(!p) return;
+  var analises = p.analises||[];
+
+  document.getElementById('gestaoModalTitle').textContent = 'Processo '+p.ref+' — '+p._userName;
+  document.getElementById('gestaoModalSub').textContent = (p.exportador||'') + ' · ' + p.data + ' · '+analises.length+' análise(s)';
+
+  var body = '';
+
+  // Approval section
+  body += '<div style="margin-bottom:16px;padding:14px;background:var(--surface-2);border-radius:8px;border:1px solid var(--border);">';
+  body += '<div style="font-size:12px;font-weight:700;color:var(--text-dim);margin-bottom:10px;text-transform:uppercase;">Aprovação gerencial</div>';
+  if(p._approved){
+    body += '<div style="color:var(--ok);font-size:13px;font-weight:600;">✓ Aprovado por '+p._approvedBy+' em '+p._approvedAt+'</div>';
+    body += '<button data-action="revoke" data-id="'+id+'" data-user="'+username+'" style="margin-top:8px;font-size:11px;color:var(--danger);background:none;border:1px solid var(--danger);border-radius:4px;padding:4px 10px;cursor:pointer;">Revogar aprovação</button>';
+  } else {
+    body += '<button data-action="approve" data-id="'+id+'" data-user="'+username+'" style="font-size:12px;font-weight:600;color:white;background:var(--ok);border:none;border-radius:6px;padding:8px 16px;cursor:pointer;">✓ Aprovar processo</button>';
+  }
+  body += '</div>';
+
+  // Manager comment
+  body += '<div style="margin-bottom:16px;">';
+  body += '<div style="font-size:12px;font-weight:700;color:var(--text-dim);margin-bottom:8px;text-transform:uppercase;">Comentário do gerente</div>';
+  body += '<textarea id="gestaoComment" style="width:100%;min-height:80px;padding:10px;border:1px solid var(--border);border-radius:6px;font-size:13px;font-family:inherit;background:var(--surface);color:var(--text);resize:vertical;" placeholder="Escreva um comentário ou orientação para a analista...">'+(p._managerComment||'')+'</textarea>';
+  body += '<button data-action="savecomment" data-id="'+id+'" data-user="'+username+'" style="margin-top:6px;font-size:12px;color:var(--accent);background:var(--accent-dim);border:none;border-radius:6px;padding:6px 14px;cursor:pointer;">Salvar comentário</button>';
+  body += '</div>';
+
+  // Analyses timeline
+  body += '<div style="font-size:12px;font-weight:700;color:var(--text-dim);margin-bottom:10px;text-transform:uppercase;">Histórico de análises</div>';
+  analises.slice().reverse().forEach(function(a, idx){
+    var divs=a.resumo?a.resumo.divergencias:0;
+    var alts=a.resumo?a.resumo.alertas:0;
+    body += '<div style="border:1px solid var(--border);border-radius:6px;padding:12px;margin-bottom:8px;">';
+    body += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">';
+    body += '<span style="font-size:12px;font-weight:600;">Análise '+(analises.length-idx)+(idx===0?' &nbsp;<em style="font-size:10px;color:var(--accent);font-weight:400;">ÚLTIMA</em>':'')+' </span>';
+    body += '<span style="font-size:11px;color:var(--text-dim);">'+a.data+'</span>';
+    body += '</div>';
+    body += '<div style="font-size:11px;color:var(--text-dim);">'+a.docs+'</div>';
+    body += '<div style="font-size:11px;margin-top:4px;">';
+    if(divs) body += '<span style="color:var(--danger);margin-right:8px;">✗ '+divs+' diverg.</span>';
+    if(alts) body += '<span style="color:var(--warn);">⚠ '+alts+' alertas</span>';
+    if(!divs&&!alts) body += '<span style="color:var(--ok);">✓ Sem problemas</span>';
+    body += '</div></div>';
+  });
+
+  document.getElementById('gestaoModalBody').innerHTML = body;
+  var bg = document.getElementById('gestaoModalBg');
+  // Button delegation
+  var mbody = document.getElementById('gestaoModalBody');
+  mbody.onclick = function(e){
+    var btn = e.target.closest('[data-action]');
+    if(!btn) return;
+    var act=btn.getAttribute('data-action');
+    var bid=parseInt(btn.getAttribute('data-id'));
+    var buser=btn.getAttribute('data-user');
+    if(act==='approve') approveProcess(bid,buser);
+    else if(act==='revoke') revokeApproval(bid,buser);
+    else if(act==='savecomment'){
+      var comment=document.getElementById('gestaoComment').value.trim();
+      saveGestaoComment(bid,buser,comment);
+    }
+  };
+  bg.style.display='flex';
+}
+
+function approveProcess(id, username){
+  var key = 'impak_processes_'+username;
+  try{
+    var procs = JSON.parse(localStorage.getItem(key)||'[]');
+    var p = procs.find(function(x){return x.id===id;});
+    if(p){
+      var now = new Date().toLocaleString('pt-BR');
+      p._approved=true; p._approvedBy=getCurrentUser().displayName; p._approvedAt=now;
+      localStorage.setItem(key, JSON.stringify(procs));
+      closeGestaoModal();
+      renderGestao();
+      showToast('Processo aprovado!','ok');
+    }
+  }catch(e){ showToast('Erro ao aprovar','err'); }
+}
+
+function revokeApproval(id, username){
+  var key = 'impak_processes_'+username;
+  try{
+    var procs = JSON.parse(localStorage.getItem(key)||'[]');
+    var p = procs.find(function(x){return x.id===id;});
+    if(p){ delete p._approved; delete p._approvedBy; delete p._approvedAt;
+      localStorage.setItem(key, JSON.stringify(procs));
+      closeGestaoModal(); renderGestao();
+      showToast('Aprovação revogada','ok');
+    }
+  }catch(e){}
+}
+
+function saveGestaoComment(id, username, comment){
+  var key = 'impak_processes_'+username;
+  comment = comment || '';
+  try{
+    var procs = JSON.parse(localStorage.getItem(key)||'[]');
+    var p = procs.find(function(x){return x.id===id;});
+    if(p){ p._managerComment=comment; p._managerCommentAt=new Date().toLocaleString('pt-BR');
+      p._managerCommentBy=getCurrentUser().displayName;
+      localStorage.setItem(key, JSON.stringify(procs));
+      renderGestao(); showToast('Comentário salvo!','ok');
+    }
+  }catch(e){ showToast('Erro ao salvar','err'); }
+}
+
+function closeGestaoModal(e){
+  if(!e || e.target===document.getElementById('gestaoModalBg')){
+    document.getElementById('gestaoModalBg').style.display='none';
+  }
+}
+
 
 
 function renderProcessos(filter){
