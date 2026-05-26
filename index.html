@@ -1080,7 +1080,7 @@ window.onload = function(){
       handleFiles(Array.from(e.dataTransfer.files));
     });
   }
-  // Restore API key
+  // Restore API key from localStorage
   try{
     var saved = localStorage.getItem('impak_apikey');
     if(saved && saved.length > 20){
