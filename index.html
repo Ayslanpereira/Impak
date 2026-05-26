@@ -289,6 +289,8 @@ body{box-shadow:inset 0 0 0 1px transparent;}
   position:relative;
   background:var(--surface);
 }
+.page-drag .drop-zone{border-color:var(--accent);background:var(--accent-dim);}
+.page-drag .drop-zone .dz-title{color:var(--accent);}
 .drop-zone:hover,.drop-zone.drag{
   border-color:var(--accent);
   background:var(--accent-dim);
@@ -677,7 +679,7 @@ textarea.field-input{resize:vertical;min-height:80px;}
 
 <!-- CONFERÊNCIA -->
 
-<div class="page" id="page-conferencia">
+<div class="page" id="page-conferencia" ondragover="this.classList.add('page-drag')" ondragleave="if(!event.relatedTarget)this.classList.remove('page-drag')" ondrop="this.classList.remove('page-drag')">
   <div class="page-header">
     <div>
       <div class="page-title">Nova <span>Conferência</span></div>
@@ -1071,30 +1073,30 @@ function saveApiKeyBtn(){
 window.onload = function(){
   // Don't load anything - wait for login
   // loginScreen is shown by default (display:flex in HTML)
-  // Drag and drop - rewrite for reliability
-  function setupDragDrop(){
-    var dz = document.getElementById('dropZone');
-    if(!dz) return;
-    ['dragenter','dragover'].forEach(function(ev){
-      dz.addEventListener(ev, function(e){
-        e.preventDefault(); e.stopPropagation();
-        dz.classList.add('drag');
-      });
-    });
-    dz.addEventListener('dragleave', function(e){
-      e.preventDefault();
-      if(!dz.contains(e.relatedTarget)) dz.classList.remove('drag');
-    });
-    dz.addEventListener('drop', function(e){
-      e.preventDefault(); e.stopPropagation();
-      dz.classList.remove('drag');
-      var files = e.dataTransfer ? Array.from(e.dataTransfer.files) : [];
-      if(files.length) handleFiles(files);
-    });
-  }
-  setupDragDrop();
-  // Re-setup after page navigation (in case DOM re-renders)
+  // Drag and drop - document level (works regardless of page visibility)
   document.addEventListener('dragover', function(e){ e.preventDefault(); });
+  document.addEventListener('drop', function(e){
+    e.preventDefault();
+    var page = document.getElementById('page-conferencia');
+    if(!page || !page.classList.contains('active')) return;
+    var files = e.dataTransfer ? Array.from(e.dataTransfer.files) : [];
+    if(!files.length) return;
+    handleFiles(files);
+    var dz = document.getElementById('dropZone');
+    if(dz) dz.classList.remove('drag');
+    showToast(files.length+' arquivo(s) adicionado(s)','ok');
+  });
+  document.addEventListener('dragenter', function(e){
+    e.preventDefault();
+    var page = document.getElementById('page-conferencia');
+    var dz = document.getElementById('dropZone');
+    if(page && page.classList.contains('active') && dz) dz.classList.add('drag');
+  });
+  document.addEventListener('dragleave', function(e){
+    if(e.relatedTarget) return;
+    var dz = document.getElementById('dropZone');
+    if(dz) dz.classList.remove('drag');
+  });
   // Restore API key from localStorage
   try{
     var saved = localStorage.getItem('impak_apikey');
