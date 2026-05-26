@@ -193,7 +193,7 @@ body{box-shadow:inset 0 0 0 1px transparent;}
   gap:12px;
   margin-bottom:32px;
 }
-.stat-card{
+.stat-card{cursor:pointer;transition:box-shadow 0.15s;
   background:var(--surface);
   border:1px solid var(--border);
   border-radius:8px;
@@ -605,10 +605,10 @@ textarea.field-input{resize:vertical;min-height:80px;}
 
   <div class="sec">Resumo</div>
   <div class="stats-grid" id="statsGrid">
-    <div class="stat-card"><div class="stat-val" id="statTotal">0</div><div class="stat-label">Total de processos</div></div>
-    <div class="stat-card" style="--accent:var(--ok)"><div class="stat-val" id="statOk" style="color:var(--ok)">0</div><div class="stat-label">Sem divergências</div></div>
-    <div class="stat-card" style="--accent:var(--warn)"><div class="stat-val" id="statWarn" style="color:var(--warn)">0</div><div class="stat-label">Com alertas</div></div>
-    <div class="stat-card" style="--accent:var(--danger)"><div class="stat-val" id="statErr" style="color:var(--danger)">0</div><div class="stat-label">Com divergências</div></div>
+    <div class="stat-card" id="statCardTotal" onclick="showPage('processos');renderProcessos('');" title="Ver todos" style="cursor:pointer;"><div class="stat-val" id="statTotal">0</div><div class="stat-label">Total de processos</div></div>
+    <div class="stat-card" id="statCardOk" onclick="showPage('processos');renderProcessos('__status:ok');" title="Ver sem divergências" style="cursor:pointer;--accent:var(--ok)"><div class="stat-val" id="statOk" style="color:var(--ok)">0</div><div class="stat-label">Sem divergências</div></div>
+    <div class="stat-card" id="statCardWarn" onclick="showPage('processos');renderProcessos('__status:warn');" title="Ver com alertas" style="cursor:pointer;--accent:var(--warn)"><div class="stat-val" id="statWarn" style="color:var(--warn)">0</div><div class="stat-label">Com alertas</div></div>
+    <div class="stat-card" id="statCardErr" onclick="showPage('processos');renderProcessos('__status:err');" title="Ver com divergências" style="cursor:pointer;--accent:var(--danger)"><div class="stat-val" id="statErr" style="color:var(--danger)">0</div><div class="stat-label">Com divergências</div></div>
   </div>
 
   <div class="sec">Processos Recentes</div>
@@ -642,6 +642,7 @@ textarea.field-input{resize:vertical;min-height:80px;}
       <div class="page-title">Gestão</div>
       <div class="page-sub">Visão gerencial de todos os processos</div>
     </div>
+    <button class="btn btn-danger btn-sm" onclick="clearAllHistory()" title="Apagar todo o histórico">🗑 Limpar Histórico</button>
   </div>
   <div style="display:flex;gap:10px;margin-bottom:16px;align-items:center;flex-wrap:wrap;">
     <div style="position:relative;flex:1;min-width:200px;">
@@ -1070,34 +1071,30 @@ function saveApiKeyBtn(){
 window.onload = function(){
   // Don't load anything - wait for login
   // loginScreen is shown by default (display:flex in HTML)
-  // Drag and drop setup
-  var dz = document.getElementById('dropZone');
-  if(dz){
-    dz.addEventListener('dragover',function(e){
-      e.preventDefault();
-      e.stopPropagation();
-      dz.classList.add('drag');
+  // Drag and drop - rewrite for reliability
+  function setupDragDrop(){
+    var dz = document.getElementById('dropZone');
+    if(!dz) return;
+    ['dragenter','dragover'].forEach(function(ev){
+      dz.addEventListener(ev, function(e){
+        e.preventDefault(); e.stopPropagation();
+        dz.classList.add('drag');
+      });
     });
-    dz.addEventListener('dragleave',function(e){
-      // Only remove if leaving the dropZone entirely
-      if(!dz.contains(e.relatedTarget)){
-        dz.classList.remove('drag');
-      }
-    });
-    dz.addEventListener('drop',function(e){
+    dz.addEventListener('dragleave', function(e){
       e.preventDefault();
-      e.stopPropagation();
+      if(!dz.contains(e.relatedTarget)) dz.classList.remove('drag');
+    });
+    dz.addEventListener('drop', function(e){
+      e.preventDefault(); e.stopPropagation();
       dz.classList.remove('drag');
       var files = e.dataTransfer ? Array.from(e.dataTransfer.files) : [];
       if(files.length) handleFiles(files);
     });
-    // Also handle drag on the entire document as fallback
-    document.addEventListener('dragover',function(e){ e.preventDefault(); });
-    document.addEventListener('drop',function(e){
-      e.preventDefault();
-      // Only handle if not already handled by dropZone
-    });
   }
+  setupDragDrop();
+  // Re-setup after page navigation (in case DOM re-renders)
+  document.addEventListener('dragover', function(e){ e.preventDefault(); });
   // Restore API key from localStorage
   try{
     var saved = localStorage.getItem('impak_apikey');
@@ -1273,7 +1270,7 @@ async function runAnalysis(){
       + 'PASSO 2 - CRUZAMENTO: Comparar todos campos entre todos docs. Campo presente num doc e ausente em outro=DIVERGENCIA. Dados bancarios identicos em todos. '
       + 'Grupos: Identificacao|Importador|Comprador Final(buyer!=importador=normal)|Exportador|Mercadoria|Valores|Pesos|Logistica|CE Mercante|Pais Origem. '
       + 'PASSO 3 - EUDEMON: Se marca EUDEMON verificar codigo em CI/PI/PL: 3301000094ab=275/80R22.5 UD188 149/146L 18PR|3302001532eu=275/80R22.5 UF195 149/146L 18PR|3302002217=295/80R22.5 UD188 154/149L 18PR|3302002218=295/80R22.5 UF195 154/149M 18PR|3302002429=295/80R22.5 UD223 154/149K 18PR|3302001815ab=235/75R17.5 UD188 143/141L 18PR|3302001861ab=215/75R17.5 UD188 135/133L 16PR|3302001609ab=215/75R17.5 UF195 135/133L 16PR|3302001608ab=235/75R17.5 UF195 143/141L 18PR. '
-      + 'REGRAS ESPECIAIS: FOB+Collect=OK, FOB+Prepaid=ALERTA. CIF/CFR+Prepaid=OK, CIF/CFR+Collect=ALERTA. Consignatario BL/CE=importador(normal). CNPJ importador!=CNPJ buyer=normal. Transbordo=navio pode diferir. Numeros: 17.548,00=17548. Datas: 2026-03-23=23/03/2026. Data CE comparar APENAS com on board date BL.';
+      + 'REGRA PESO: Para pneus sem embalagem o peso liquido=bruto e aceitavel ter apenas um campo de peso. EXCECAO: fabricante NAKANKG exige peso bruto E liquido separados — se NAKANKG e peso liquido ausente = DIVERGENCIA. Se fabricante NAO for NAKANKG e peso tiver apenas um valor (G.W/N.W ou similar) = OK, nao alertar. ' + 'REGRAS ESPECIAIS: FOB+Collect=OK, FOB+Prepaid=ALERTA. CIF/CFR+Prepaid=OK, CIF/CFR+Collect=ALERTA. Consignatario BL/CE=importador(normal). CNPJ importador!=CNPJ buyer=normal. Transbordo=navio pode diferir. Numeros: 17.548,00=17548. Datas: 2026-03-23=23/03/2026. Data CE comparar APENAS com on board date BL.';
 
     content.push({type:'text',text:prompt});
 
@@ -1491,21 +1488,42 @@ function renderDashboard(){
   if(s3) s3.textContent=warn;
   if(s4) s4.textContent=err;
 
+  // Make stat cards clickable - navigate to processos with filter
+  var statCards = [
+    {id:'statCardTotal', filter:''},
+    {id:'statCardOk', filter:'ok'},
+    {id:'statCardWarn', filter:'warn'},
+    {id:'statCardErr', filter:'err'},
+  ];
+  statCards.forEach(function(sc){
+    var card = document.getElementById(sc.id);
+    if(card){
+      card.style.cursor='pointer';
+      card.onclick = function(){
+        showPage('processos');
+        var ps = document.getElementById('procSearch');
+        if(ps){ ps.value=''; }
+        // Filter by status
+        if(sc.filter){
+          renderProcessos('__status:'+sc.filter);
+        } else {
+          renderProcessos('');
+        }
+      };
+    }
+  });
+
   var recent=document.getElementById('dashRecent');
   if(!recent) return;
-
   if(!procs.length){
     recent.innerHTML='<div style="text-align:center;color:var(--text-dim);font-size:13px;padding:32px 0;">Nenhum processo ainda.</div>';
     return;
   }
-
   recent.innerHTML=procs.slice(0,5).map(function(p){
-    var statusColors={ok:'var(--ok)',warn:'var(--warn)',err:'var(--danger)'};
-    var statusLabels={ok:'OK',warn:'Alertas',err:'Divergências'};
-    var sc=statusColors[p.status]||'var(--text-dim)';
-    var sl=statusLabels[p.status]||'—';
+    var sc={ok:'var(--ok)',warn:'var(--warn)',err:'var(--danger)'}[p.status]||'var(--text-dim)';
+    var sl={ok:'OK',warn:'Alertas',err:'Divergências'}[p.status]||'—';
     var analises=(p.analises||[]).length;
-    return '<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border);">'
+    return '<div data-dash-nav="processos" style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border);cursor:pointer;">'
       +'<div><div style="font-weight:600;font-size:13px;color:var(--text-bright);">'+p.ref+'</div>'
       +'<div style="font-size:11px;color:var(--text-dim);">'+(p.exportador||'—')+' · '+p.data+' · '+analises+' análise(s)</div></div>'
       +'<span style="font-size:11px;font-weight:700;color:'+sc+';font-family:monospace;">'+sl+'</span>'
@@ -1604,66 +1622,114 @@ function openGestaoModal(id, username){
   var p = all.find(function(x){ return x.id===id && x._user===username; });
   if(!p) return;
   var analises = p.analises||[];
+  var last = analises.length ? analises[analises.length-1] : null;
 
-  document.getElementById('gestaoModalTitle').textContent = 'Processo '+p.ref+' — '+p._userName;
-  document.getElementById('gestaoModalSub').textContent = (p.exportador||'') + ' · ' + p.data + ' · '+analises.length+' análise(s)';
+  document.getElementById('gestaoModalTitle').textContent = 'Processo '+p.ref;
+  document.getElementById('gestaoModalSub').textContent = (p._userName||'') + ' · ' + (p.exportador||'') + ' · ' + p.data + ' · ' + analises.length + ' análise(s)';
 
   var body = '';
 
-  // Approval section
-  body += '<div style="margin-bottom:16px;padding:14px;background:var(--surface-2);border-radius:8px;border:1px solid var(--border);">';
-  body += '<div style="font-size:12px;font-weight:700;color:var(--text-dim);margin-bottom:10px;text-transform:uppercase;">Aprovação gerencial</div>';
+  // ── Approval ──────────────────────────────────────────────────────
+  body += '<div style="margin-bottom:16px;padding:14px;background:var(--surface-2,var(--surface));border-radius:8px;border:1px solid var(--border);">';
+  body += '<div style="font-size:11px;font-weight:700;color:var(--text-dim);margin-bottom:10px;text-transform:uppercase;letter-spacing:.05em;">Aprovação Gerencial</div>';
   if(p._approved){
-    body += '<div style="color:var(--ok);font-size:13px;font-weight:600;">✓ Aprovado por '+p._approvedBy+' em '+p._approvedAt+'</div>';
-    body += '<button data-action="revoke" data-id="'+id+'" data-user="'+username+'" style="margin-top:8px;font-size:11px;color:var(--danger);background:none;border:1px solid var(--danger);border-radius:4px;padding:4px 10px;cursor:pointer;">Revogar aprovação</button>';
+    body += '<div style="color:var(--ok);font-size:13px;font-weight:600;margin-bottom:8px;">✓ Aprovado por '+p._approvedBy+' em '+p._approvedAt+'</div>';
+    body += '<button data-action="revoke" data-id="'+id+'" data-user="'+username+'" style="font-size:11px;color:var(--danger);background:none;border:1px solid var(--danger);border-radius:4px;padding:4px 10px;cursor:pointer;">Revogar aprovação</button>';
   } else {
-    body += '<button data-action="approve" data-id="'+id+'" data-user="'+username+'" style="font-size:12px;font-weight:600;color:white;background:var(--ok);border:none;border-radius:6px;padding:8px 16px;cursor:pointer;">✓ Aprovar processo</button>';
+    body += '<button data-action="approve" data-id="'+id+'" data-user="'+username+'" style="font-size:13px;font-weight:600;color:white;background:var(--ok);border:none;border-radius:6px;padding:8px 20px;cursor:pointer;">✓ Aprovar processo</button>';
   }
   body += '</div>';
 
-  // Manager comment
+  // ── Manager comment ───────────────────────────────────────────────
   body += '<div style="margin-bottom:16px;">';
-  body += '<div style="font-size:12px;font-weight:700;color:var(--text-dim);margin-bottom:8px;text-transform:uppercase;">Comentário do gerente</div>';
-  body += '<textarea id="gestaoComment" style="width:100%;min-height:80px;padding:10px;border:1px solid var(--border);border-radius:6px;font-size:13px;font-family:inherit;background:var(--surface);color:var(--text);resize:vertical;" placeholder="Escreva um comentário ou orientação para a analista...">'+(p._managerComment||'')+'</textarea>';
-  body += '<button data-action="savecomment" data-id="'+id+'" data-user="'+username+'" style="margin-top:6px;font-size:12px;color:var(--accent);background:var(--accent-dim);border:none;border-radius:6px;padding:6px 14px;cursor:pointer;">Salvar comentário</button>';
+  body += '<div style="font-size:11px;font-weight:700;color:var(--text-dim);margin-bottom:8px;text-transform:uppercase;letter-spacing:.05em;">Comentário do Gerente</div>';
+  body += '<textarea id="gestaoComment" style="width:100%;min-height:72px;padding:10px;border:1px solid var(--border);border-radius:6px;font-size:13px;font-family:inherit;background:var(--surface);color:var(--text);resize:vertical;box-sizing:border-box;" placeholder="Orientações, observações ou aprovações parciais...">'+(p._managerComment||'')+'</textarea>';
+  if(p._managerCommentBy){
+    body += '<div style="font-size:11px;color:var(--text-dim);margin-top:4px;">Último comentário por '+p._managerCommentBy+' em '+p._managerCommentAt+'</div>';
+  }
+  body += '<button data-action="savecomment" data-id="'+id+'" data-user="'+username+'" style="margin-top:8px;font-size:12px;color:var(--accent);background:var(--accent-dim);border:none;border-radius:6px;padding:6px 14px;cursor:pointer;font-weight:600;">Salvar comentário</button>';
   body += '</div>';
 
-  // Analyses timeline
-  body += '<div style="font-size:12px;font-weight:700;color:var(--text-dim);margin-bottom:10px;text-transform:uppercase;">Histórico de análises</div>';
-  analises.slice().reverse().forEach(function(a, idx){
-    var divs=a.resumo?a.resumo.divergencias:0;
-    var alts=a.resumo?a.resumo.alertas:0;
-    body += '<div style="border:1px solid var(--border);border-radius:6px;padding:12px;margin-bottom:8px;">';
-    body += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">';
-    body += '<span style="font-size:12px;font-weight:600;">Análise '+(analises.length-idx)+(idx===0?' &nbsp;<em style="font-size:10px;color:var(--accent);font-weight:400;">ÚLTIMA</em>':'')+' </span>';
-    body += '<span style="font-size:11px;color:var(--text-dim);">'+a.data+'</span>';
-    body += '</div>';
-    body += '<div style="font-size:11px;color:var(--text-dim);">'+a.docs+'</div>';
-    body += '<div style="font-size:11px;margin-top:4px;">';
-    if(divs) body += '<span style="color:var(--danger);margin-right:8px;">✗ '+divs+' diverg.</span>';
-    if(alts) body += '<span style="color:var(--warn);">⚠ '+alts+' alertas</span>';
-    if(!divs&&!alts) body += '<span style="color:var(--ok);">✓ Sem problemas</span>';
+  // ── Analyses with full divergences ────────────────────────────────
+  body += '<div style="font-size:11px;font-weight:700;color:var(--text-dim);margin-bottom:12px;text-transform:uppercase;letter-spacing:.05em;">Análises do Processo</div>';
+
+  analises.slice().reverse().forEach(function(a, revIdx){
+    var analIdx = analises.length - revIdx;
+    var isLast = revIdx === 0;
+    var divs = a.resumo ? a.resumo.divergencias : 0;
+    var alts = a.resumo ? a.resumo.alertas : 0;
+    var ok  = a.resumo ? a.resumo.campos_ok : 0;
+
+    body += '<div style="border:1px solid var(--border);border-radius:8px;margin-bottom:12px;overflow:hidden;">';
+
+    // Analysis header
+    body += '<div style="padding:12px 16px;background:var(--surface-2,var(--surface));display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--border);">';
+    body += '<div><span style="font-size:13px;font-weight:700;">Análise '+analIdx+'</span>';
+    if(isLast) body += ' <span style="font-size:10px;padding:2px 6px;border-radius:4px;background:var(--accent);color:white;font-weight:600;margin-left:6px;">ÚLTIMA</span>';
+    body += '<div style="font-size:11px;color:var(--text-dim);margin-top:2px;">'+a.data+' · '+a.docs+'</div></div>';
+    body += '<div style="display:flex;gap:8px;align-items:center;">';
+    if(divs) body += '<span style="font-size:11px;font-weight:700;color:var(--danger);">✗ '+divs+' diverg.</span>';
+    if(alts) body += '<span style="font-size:11px;font-weight:700;color:var(--warn);">⚠ '+alts+' alertas</span>';
+    if(!divs&&!alts) body += '<span style="font-size:11px;font-weight:700;color:var(--ok);">✓ OK</span>';
     body += '</div></div>';
+
+    // Divergences list
+    if(a.grupos && a.grupos.length){
+      a.grupos.forEach(function(g){
+        var campos = (g.campos||[]).filter(function(c){ return c.status && c.status !== 'OK'; });
+        if(!campos.length) return;
+        body += '<div style="padding:10px 16px;border-bottom:1px solid var(--border);">';
+        body += '<div style="font-size:10px;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px;">'+g.titulo+'</div>';
+        campos.forEach(function(c){
+          var color = c.status==='DIVERGENCIA' ? 'var(--danger)' : 'var(--warn)';
+          body += '<div style="padding:8px;border-radius:6px;background:rgba(220,38,38,0.04);border-left:3px solid '+color+';margin-bottom:6px;">';
+          body += '<div style="display:flex;justify-content:space-between;margin-bottom:4px;">';
+          body += '<span style="font-size:12px;font-weight:600;">'+c.campo+'</span>';
+          body += '<span style="font-size:10px;font-weight:700;color:'+color+';">'+c.status+'</span>';
+          body += '</div>';
+          body += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">';
+          body += '<div style="font-size:11px;"><span style="color:var(--text-dim);">'+c.doc1_label+':</span> '+c.doc1_valor+'</div>';
+          body += '<div style="font-size:11px;color:'+color+';font-weight:600;"><span style="color:var(--text-dim);">'+c.doc2_label+':</span> '+c.doc2_valor+'</div>';
+          body += '</div>';
+          if(c.observacao) body += '<div style="font-size:11px;color:var(--text-dim);margin-top:4px;font-style:italic;">'+c.observacao+'</div>';
+          body += '</div>';
+        });
+        body += '</div>';
+      });
+    }
+
+    // Alerts
+    if(a.alertas && a.alertas.length){
+      body += '<div style="padding:10px 16px;">';
+      body += '<div style="font-size:10px;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px;">Alertas</div>';
+      a.alertas.forEach(function(al){
+        var txt = typeof al==='string' ? al : (al.descricao||al.mensagem||JSON.stringify(al));
+        body += '<div style="font-size:12px;padding:6px 10px;border-left:3px solid var(--warn);background:rgba(217,119,6,0.04);border-radius:0 4px 4px 0;margin-bottom:4px;">'+txt+'</div>';
+      });
+      body += '</div>';
+    }
+
+    body += '</div>'; // end analysis card
   });
 
   document.getElementById('gestaoModalBody').innerHTML = body;
-  var bg = document.getElementById('gestaoModalBg');
+
   // Button delegation
-  var mbody = document.getElementById('gestaoModalBody');
-  mbody.onclick = function(e){
+  document.getElementById('gestaoModalBody').onclick = function(e){
     var btn = e.target.closest('[data-action]');
     if(!btn) return;
-    var act=btn.getAttribute('data-action');
-    var bid=parseInt(btn.getAttribute('data-id'));
-    var buser=btn.getAttribute('data-user');
-    if(act==='approve') approveProcess(bid,buser);
-    else if(act==='revoke') revokeApproval(bid,buser);
+    var act  = btn.getAttribute('data-action');
+    var bid  = parseInt(btn.getAttribute('data-id'));
+    var buser= btn.getAttribute('data-user');
+    if(act==='approve') approveProcess(bid, buser);
+    else if(act==='revoke') revokeApproval(bid, buser);
     else if(act==='savecomment'){
-      var comment=document.getElementById('gestaoComment').value.trim();
-      saveGestaoComment(bid,buser,comment);
+      var comment = document.getElementById('gestaoComment').value.trim();
+      saveGestaoComment(bid, buser, comment);
     }
   };
-  bg.style.display='flex';
+
+  document.getElementById('gestaoModalBg').style.display='flex';
 }
 
 function approveProcess(id, username){
@@ -1715,11 +1781,35 @@ function closeGestaoModal(e){
   }
 }
 
+function clearAllHistory(){
+  if(!confirm('Tem certeza que deseja apagar TODO o histórico de processos? Esta ação não pode ser desfeita.')) return;
+  try{
+    localStorage.removeItem('impak_processes_paula');
+    localStorage.removeItem('impak_processes_emanuele');
+    localStorage.removeItem('impak_processes');
+    _processes = [];
+    currentResult = null;
+    divergResolved = {};
+    renderDashboard();
+    renderProcessos();
+    showToast('Histórico apagado com sucesso','ok');
+    showPage('dashboard');
+  }catch(e){ showToast('Erro ao apagar histórico','err'); }
+}
+
 
 
 function renderProcessos(filter){
   var procs=getProcesses();
-  var q=(filter||'').toLowerCase().trim();
+  var statusFilter = '';
+  var q = (filter||'').toLowerCase().trim();
+  if(q.startsWith('__status:')){
+    statusFilter = q.replace('__status:','');
+    q = '';
+  }
+  if(statusFilter){
+    procs = procs.filter(function(p){ return p.status===statusFilter; });
+  }
   if(q){
     procs=procs.filter(function(p){
       var s=[p.ref||'',p.exportador||'',p.obs||'',
@@ -2145,6 +2235,32 @@ if(divergResolved[key]){
   var notaEl3=panel.querySelector('.div-nota-'+i);
   if(notaEl3) notaEl3.style.borderColor='#16a34a';
   showToast('Aceito: '+nota.substring(0,40),'ok');
+  // Recalculate process status after accepting
+  try{
+    var allDivs = getDivergencias();
+    var pending = allDivs.filter(function(d){
+      var k = d.grupo+'-'+d.campo;
+      return !divergResolved[k];
+    });
+    // Update process status in storage
+    var ref2 = document.getElementById('procRef') ? document.getElementById('procRef').value.trim() : '';
+    if(ref2 && currentResult){
+      var procs2 = getProcesses();
+      var proc2 = procs2.find(function(p){ return p.ref===ref2; });
+      if(proc2){
+        proc2.status = pending.length===0 ? 'ok' : (proc2.resumo&&proc2.resumo.alertas>0 ? 'warn' : 'err');
+        // Update badge in result pills
+        var pills = document.getElementById('resultPills');
+        if(pills && pending.length===0){
+          var badge = pills.querySelector('.pill-err');
+          if(badge) badge.textContent='✓ 0 Divergências';
+        }
+        saveProcesses(procs2);
+        renderDashboard();
+        renderProcessos();
+      }
+    }
+  }catch(e){}
 }
 }
 }
