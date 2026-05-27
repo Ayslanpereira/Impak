@@ -712,11 +712,12 @@ textarea.field-input{resize:vertical;min-height:80px;}
 
   <!-- Step 2: Upload -->
   <div class="sec">02 — Documentos</div>
-  <div class="drop-zone" id="dropZone" onclick="document.getElementById('fileInput').click()">
-    <input type="file" id="fileInput" accept=".pdf,image/*" multiple onchange="addFiles(this.files)" style="display:none">
+  <div class="drop-zone" id="dropZone">
+    <input type="file" id="fileInput" accept=".pdf,image/*" multiple onchange="addFiles(this.files)" style="position:absolute;left:-9999px;">
     <span class="dz-icon">📂</span>
-    <div class="dz-title">Arraste todos os arquivos aqui</div>
+    <div class="dz-title">Clique aqui ou arraste os arquivos</div>
     <div class="dz-sub">PDF e imagens · CI, PL, BL, PI, CE Mercante · múltiplos de uma vez</div>
+  </div>
   </div>
   <div class="file-chips" id="fileChips"></div>
 
@@ -898,23 +899,35 @@ function extractAlert(a){
 
 function setupDropZone(){
   var dz = document.getElementById('dropZone');
-  if(!dz || dz._dzReady) return;
-  dz._dzReady = true;
-  dz.addEventListener('dragover', function(e){
-    e.preventDefault();
-    e.stopPropagation();
-    dz.classList.add('drag');
+  if(!dz) return;
+
+  // Drag visual feedback
+  ['dragenter','dragover'].forEach(function(ev){
+    dz.addEventListener(ev, function(e){
+      e.preventDefault();
+      e.stopPropagation();
+      dz.classList.add('drag');
+    }, false);
   });
   dz.addEventListener('dragleave', function(e){
     e.stopPropagation();
-    if(!dz.contains(e.relatedTarget)) dz.classList.remove('drag');
-  });
+    // Only remove if leaving the label entirely
+    var rect = dz.getBoundingClientRect();
+    if(e.clientX <= rect.left || e.clientX >= rect.right ||
+       e.clientY <= rect.top  || e.clientY >= rect.bottom){
+      dz.classList.remove('drag');
+    }
+  }, false);
   dz.addEventListener('drop', function(e){
     e.preventDefault();
     e.stopPropagation();
     dz.classList.remove('drag');
-    var files = Array.from(e.dataTransfer.files||[]);
-    if(files.length) handleFiles(files);
+    var files = e.dataTransfer ? Array.from(e.dataTransfer.files) : [];
+    if(files.length) addFiles(files);
+  }, false);
+  // Click to open file dialog
+  dz.addEventListener('click', function(){
+    document.getElementById('fileInput').click();
   });
 }
 
@@ -1104,6 +1117,15 @@ window.onload = function(){
       _apiKey = saved.trim();
       var inp = document.getElementById('apiKeyInput');
       if(inp) inp.value = saved.trim();
+  // Close modals on ESC key
+  document.addEventListener('keydown', function(e){
+    if(e.key === 'Escape'){
+      var mb = document.getElementById('modalBg');
+      if(mb && mb.classList.contains('show')) mb.classList.remove('show');
+      var gmb = document.getElementById('gestaoModalBg');
+      if(gmb && gmb.style.display !== 'none') gmb.style.display = 'none';
+    }
+  });
     }
   }catch(e){}
 }
@@ -1119,6 +1141,7 @@ function showPage(id){
   if(id==='dashboard') renderDashboard();
   if(id==='conferencia'){ var ra2=document.getElementById('resultArea'); if(ra2) ra2.style.display='none'; } setupDropZone();
   if(id==='processos'){ var ps=document.getElementById('procSearch'); if(ps) ps.value=''; renderProcessos(''); }
+  if(id==='gestao'){ renderGestao(); }
   if(id==='processos') renderProcessos();
   window.scrollTo(0,0);
 }
