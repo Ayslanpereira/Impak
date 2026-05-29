@@ -7,6 +7,9 @@
   <meta name="version" content="1779232091">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=DM+Mono:wght@300;400;500&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,300&display=swap" rel="stylesheet">
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <style>
 :root {
   --bg: #f0f4f8;
@@ -587,6 +590,13 @@ textarea.field-input{resize:vertical;min-height:80px;}
     <button onclick="saveApiKeyBtn()" style="width:100%;margin-top:6px;padding:7px;background:var(--accent);color:#0c0f0a;border:none;border-radius:4px;font-family:'DM Mono',monospace;font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;cursor:pointer;">✓ Confirmar Chave</button>
     <div class="api-status" style="margin-top:6px;">
       <div class="api-dot" id="apiDot"></div>
+    <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);">
+      <div class="api-label">Banco de Dados</div>
+      <div style="display:flex;align-items:center;gap:6px;margin-top:4px;">
+        <div class="api-dot" id="sheetsDot"></div>
+        <span id="sheetsStatusText" style="font-size:10px;color:var(--text-dim);">Conectando...</span>
+      </div>
+    </div>
       <span id="apiStatusText" style="font-family:'DM Mono',monospace;font-size:10px;color:var(--text-dim)">Não configurada</span>
     </div>
   </div>
@@ -1009,13 +1019,22 @@ function doLogin(){
   if(found.role==='gerente'){
     document.getElementById('navGestao').style.display='flex';
   }
-  // Load user processes
-  _processes = loadUserProcesses();
+  // Load user processes (Firebase async, localStorage como cache imediato)
+  _processes = loadUserProcesses(); // cache local imediato
   _processes = migrateAlerts(_processes);
   updateApiStatus();
   renderDashboard();
   renderProcessos();
   showPage('dashboard');
+  // Sincronizar do Firebase em background
+  dbGetProcesses(found.username, function(firebaseProcs){
+    if(firebaseProcs.length > 0 || _firebaseReady){
+      _processes = migrateAlerts(firebaseProcs);
+      try{ localStorage.setItem(getUserKey(), JSON.stringify(_processes)); }catch(e){}
+      renderDashboard();
+      renderProcessos();
+    }
+  });
 }
 
 function loginClearErr(){
@@ -1037,6 +1056,7 @@ function getUserKey(){
 }
 
 function loadUserProcesses(){
+  // Returns local copy - Sheets sync happens separately
   try{
     var raw = localStorage.getItem(getUserKey());
     return JSON.parse(raw||'[]');
@@ -1071,6 +1091,135 @@ function getAllProcesses(){
 // ─── STORAGE ─────────────────────────────────────────────────────────
 // Session storage - works everywhere
 let _apiKey = '';
+
+// ─── FIREBASE CONFIG ──────────────────────────────────────────────────
+// 🔧 CONFIGURAÇÃO: Cole aqui as credenciais do seu projeto Firebase
+// Acesse: console.firebase.google.com → Seu projeto → ⚙️ Configurações → "Seus aplicativos" → SDK
+var FIREBASE_CONFIG = {
+  apiKey:            "AIzaSyDCCtgy81b_n7VvRaXwy1_XoGGmedgAtTg",
+  authDomain:        "impak-sistema.firebaseapp.com",
+  projectId:         "impak-sistema",
+  storageBucket:     "impak-sistema.firebasestorage.app",
+  messagingSenderId: "79766710857",
+  appId:             "1:79766710857:web:aad1c9c93ba1cb3fcd2d98"
+};
+
+// Firebase SDK (carregado via CDN no <head>)
+var _db = null;
+var _firebaseReady = false;
+
+function initFirebase(){
+  try {
+    if (!firebase.apps.length) {
+      firebase.initializeApp(FIREBASE_CONFIG);
+    }
+    _db = firebase.firestore();
+    _firebaseReady = true;
+    var dot = document.getElementById('sheetsDot');
+    var txt = document.getElementById('sheetsStatusText');
+    if(dot){ dot.style.background = 'var(--ok)'; dot.className = 'api-dot ok'; }
+    if(txt){ txt.textContent = 'Firebase conectado ✓'; txt.style.color = 'var(--ok)'; }
+    console.log('Firebase Firestore inicializado com sucesso.');
+  } catch(e) {
+    var dot2 = document.getElementById('sheetsDot');
+    var txt2 = document.getElementById('sheetsStatusText');
+    if(dot2) dot2.style.background = 'var(--danger)';
+    if(txt2){ txt2.textContent = 'Erro Firebase — verifique config'; txt2.style.color = 'var(--danger)'; }
+    console.error('Erro ao inicializar Firebase:', e);
+  }
+}
+
+// ─── DB FUNCTIONS (Firebase + localStorage fallback) ──────────────────
+
+// Salva processo no Firestore — doc ID = "username_procId"
+function dbSaveProcess(username, proc){
+  // localStorage sempre como backup
+  var key = 'impak_processes_'+username;
+  try{
+    var procs = JSON.parse(localStorage.getItem(key)||'[]');
+    var idx = procs.findIndex(function(p){ return p.id===proc.id; });
+    if(idx>=0) procs[idx]=proc; else procs.unshift(proc);
+    localStorage.setItem(key, JSON.stringify(procs));
+  }catch(e){}
+
+  if(!_firebaseReady || !_db) return;
+  var docId = username + '_' + proc.id;
+  var data = Object.assign({}, proc, { _user: username, _updatedAt: Date.now() });
+  _db.collection('processos').doc(docId).set(data)
+    .catch(function(e){ console.warn('Firebase save error:', e); });
+}
+
+// Busca processos de um usuário
+function dbGetProcesses(username, callback){
+  if(!_firebaseReady || !_db){
+    var key = 'impak_processes_'+(username||'unknown');
+    try{ callback(JSON.parse(localStorage.getItem(key)||'[]')); }catch(e){ callback([]); }
+    return;
+  }
+  _db.collection('processos')
+    .where('_user','==', username)
+    .orderBy('id','desc')
+    .get()
+    .then(function(snap){
+      var list = [];
+      snap.forEach(function(doc){ list.push(doc.data()); });
+      // Atualiza localStorage como cache
+      try{ localStorage.setItem('impak_processes_'+username, JSON.stringify(list)); }catch(e){}
+      callback(list);
+    })
+    .catch(function(e){
+      console.warn('Firebase get error, usando localStorage:', e);
+      var key = 'impak_processes_'+(username||'unknown');
+      try{ callback(JSON.parse(localStorage.getItem(key)||'[]')); }catch(ex){ callback([]); }
+    });
+}
+
+// Busca TODOS os processos (visão Paula/gerente)
+function dbGetAllProcesses(callback){
+  if(!_firebaseReady || !_db){
+    callback(getAllProcesses());
+    return;
+  }
+  _db.collection('processos')
+    .orderBy('id','desc')
+    .get()
+    .then(function(snap){
+      var list = [];
+      snap.forEach(function(doc){
+        var p = doc.data();
+        var u = USERS.find(function(x){ return x.username===p._user; });
+        p._userName = u ? u.displayName : (p._user||'?');
+        list.push(p);
+      });
+      callback(list);
+    })
+    .catch(function(e){
+      console.warn('Firebase getAll error:', e);
+      callback(getAllProcesses());
+    });
+}
+
+// Deleta processo
+function dbDeleteProcess(username, id){
+  var key = 'impak_processes_'+username;
+  try{
+    var procs = JSON.parse(localStorage.getItem(key)||'[]');
+    procs = procs.filter(function(p){ return p.id!==id; });
+    localStorage.setItem(key, JSON.stringify(procs));
+  }catch(e){}
+  if(!_firebaseReady || !_db) return;
+  var docId = username + '_' + id;
+  _db.collection('processos').doc(docId).delete()
+    .catch(function(e){ console.warn('Firebase delete error:', e); });
+}
+
+// Legacy — não usado mas mantido para compatibilidade
+var _sheetsUrl = '';
+function getSheetsUrl(){ return ''; }
+function saveSheetsUrl(){}
+function testSheetsConnection(){}
+function updateSheetsStatus(){}
+
 let _processes = [];
 try{ _processes = JSON.parse(localStorage.getItem('impak_processes')||'[]'); }catch(e){ _processes=[]; }
 
@@ -1084,7 +1233,18 @@ function migrateAlerts(procs){
     return p;
   });
 }
-function saveProcesses(p){ _processes=p; try{ localStorage.setItem(getUserKey(),JSON.stringify(p)); }catch(e){} }
+function saveProcesses(p){
+  _processes=p;
+  var user = _currentUser ? _currentUser.username : null;
+  // Save to localStorage
+  try{ localStorage.setItem(getUserKey(), JSON.stringify(p)); }catch(e){}
+  // Sempre sincroniza o processo mais recente com Firebase
+  if(user && p.length > 0){
+    var latest = p[0];
+    if(latest) dbSaveProcess(user, latest);
+  }
+}
+// _saveProcesses_placeholder
 function getApiKey(){ return _apiKey; }
 function saveApiKey(v){ _apiKey=v.trim(); try{ localStorage.setItem('impak_apikey',v.trim()); }catch(e){} updateApiStatus(); }
 function saveApiKeyBtn(){
@@ -1107,6 +1267,8 @@ function saveApiKeyBtn(){
 
 // ─── INIT ────────────────────────────────────────────────────────────
 window.onload = function(){
+  // Inicializar Firebase
+  initFirebase();
   // Don't load anything - wait for login
   // loginScreen is shown by default (display:flex in HTML)
   // Drag and drop - set up on showPage('conferencia')
@@ -1557,12 +1719,19 @@ function renderDashboard(){
 }
 
 // ─── GESTÃO (manager view) ────────────────────────────────────────────
+function _renderGestaoWithData(all){ _gestaoAll=all; _doRenderGestao(); }
+var _gestaoAll=null;
 function renderGestao(){
   var q=(document.getElementById('gestaoSearch').value||'').toLowerCase();
   var filterUser=document.getElementById('gestaoUser').value;
   var filterStatus=document.getElementById('gestaoStatus').value;
 
-  var all = getAllProcesses();
+  var all = [];
+  // Sempre usa dbGetAllProcesses (Firebase se disponível, localStorage como fallback)
+  dbGetAllProcesses(function(sheetAll){
+    all = sheetAll;
+    _renderGestaoWithData(all);
+  });
 
   // Populate user dropdown
   var sel = document.getElementById('gestaoUser');
@@ -1766,6 +1935,7 @@ function approveProcess(id, username){
       var now = new Date().toLocaleString('pt-BR');
       p._approved=true; p._approvedBy=getCurrentUser().displayName; p._approvedAt=now;
       localStorage.setItem(key, JSON.stringify(procs));
+      dbSaveProcess(username, p); // Firebase
       closeGestaoModal();
       renderGestao();
       showToast('Processo aprovado!','ok');
@@ -1780,6 +1950,7 @@ function revokeApproval(id, username){
     var p = procs.find(function(x){return x.id===id;});
     if(p){ delete p._approved; delete p._approvedBy; delete p._approvedAt;
       localStorage.setItem(key, JSON.stringify(procs));
+      dbSaveProcess(username, p); // Firebase
       closeGestaoModal(); renderGestao();
       showToast('Aprovação revogada','ok');
     }
@@ -1795,6 +1966,7 @@ function saveGestaoComment(id, username, comment){
     if(p){ p._managerComment=comment; p._managerCommentAt=new Date().toLocaleString('pt-BR');
       p._managerCommentBy=getCurrentUser().displayName;
       localStorage.setItem(key, JSON.stringify(procs));
+      dbSaveProcess(username, p); // Firebase
       renderGestao(); showToast('Comentário salvo!','ok');
     }
   }catch(e){ showToast('Erro ao salvar','err'); }
@@ -1809,6 +1981,14 @@ function closeGestaoModal(e){
 function clearAllHistory(){
   if(!confirm('Tem certeza que deseja apagar TODO o histórico de processos? Esta ação não pode ser desfeita.')) return;
   try{
+    // Deletar do Firebase
+    if(_firebaseReady && _db){
+      _db.collection('processos').get().then(function(snap){
+        var batch = _db.batch();
+        snap.forEach(function(doc){ batch.delete(doc.ref); });
+        return batch.commit();
+      }).catch(function(e){ console.warn('Erro ao limpar Firebase:', e); });
+    }
     localStorage.removeItem('impak_processes_paula');
     localStorage.removeItem('impak_processes_emanuele');
     localStorage.removeItem('impak_processes');
