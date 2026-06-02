@@ -652,9 +652,12 @@ textarea.field-input{resize:vertical;min-height:80px;}
   <div class="page-header">
     <div>
       <div class="page-title">Gestão</div>
-      <div class="page-sub">Visão gerencial de todos os processos</div>
+      <div class="page-sub">Visão gerencial de todos os processos · <span id="gestaoSyncStatus" style="color:var(--text-dim);font-size:11px;">Atualizado agora</span></div>
     </div>
-    <button class="btn btn-danger btn-sm" onclick="clearAllHistory()" title="Apagar todo o histórico">🗑 Limpar Histórico</button>
+    <div style="display:flex;gap:8px;align-items:center;">
+      <button class="btn btn-ghost btn-sm" onclick="atualizarGestaoManual()" title="Buscar atualizações agora">↻ Atualizar</button>
+      <button class="btn btn-danger btn-sm" onclick="clearAllHistory()" title="Apagar todo o histórico">🗑 Limpar Histórico</button>
+    </div>
   </div>
   <div style="display:flex;gap:10px;margin-bottom:16px;align-items:center;flex-wrap:wrap;">
     <div style="position:relative;flex:1;min-width:200px;">
@@ -750,7 +753,7 @@ textarea.field-input{resize:vertical;min-height:80px;}
   </div>
 
   <!-- Results -->
-  <div id="resultArea" style="display:none;margin-left:-24px;margin-right:-24px;padding:0 24px;background:var(--bg2);border-top:1px solid var(--border);padding-top:24px;margin-top:8px;">
+  <div id="resultArea" style="display:none">
     <div class="sec">03 — Relatório de Conferência</div>
     <div class="result-header">
       <div class="pills" id="resultPills"></div>
@@ -1130,19 +1133,20 @@ function initFirebase(){
   }
 }
 
-// ─── DB FUNCTIONS (Firebase + localStorage fallback) ──────────────────
+// ─── DB — Firebase como fonte única de verdade ────────────────
+// localStorage apenas como cache offline para carregamento rápido
 
-// Salva processo no Firestore — doc ID = "username_procId"
+// Salva processo no Firestore + atualiza cache local
 function dbSaveProcess(username, proc){
-  // localStorage sempre como backup
   var key = 'impak_processes_'+username;
+  // Cache local
   try{
     var procs = JSON.parse(localStorage.getItem(key)||'[]');
     var idx = procs.findIndex(function(p){ return p.id===proc.id; });
     if(idx>=0) procs[idx]=proc; else procs.unshift(proc);
     localStorage.setItem(key, JSON.stringify(procs));
   }catch(e){}
-
+  // Firebase — fonte principal
   if(!_firebaseReady || !_db) return;
   var docId = username + '_' + proc.id;
   var data = Object.assign({}, proc, { _user: username, _updatedAt: Date.now() });
@@ -1150,7 +1154,7 @@ function dbSaveProcess(username, proc){
     .catch(function(e){ console.warn('Firebase save error:', e); });
 }
 
-// Busca processos de um usuário
+// Busca processos de um usuário — Firebase primeiro, cache como fallback
 function dbGetProcesses(username, callback){
   if(!_firebaseReady || !_db){
     var key = 'impak_processes_'+(username||'unknown');
@@ -1163,29 +1167,23 @@ function dbGetProcesses(username, callback){
     .then(function(snap){
       var list = [];
       snap.forEach(function(doc){ list.push(doc.data()); });
-      // Ordena por id decrescente no JS
-      list.sort(function(a,b){ return (b.id||'').localeCompare(a.id||''); });
-      // Atualiza localStorage como cache
+      list.sort(function(a,b){ return (b._updatedAt||b.id||0) > (a._updatedAt||a.id||0) ? 1 : -1; }).reverse();
       try{ localStorage.setItem('impak_processes_'+username, JSON.stringify(list)); }catch(e){}
       callback(list);
     })
     .catch(function(e){
-      console.warn('Firebase get error, usando localStorage:', e);
-      var key = 'impak_processes_'+(username||'unknown');
-      try{ callback(JSON.parse(localStorage.getItem(key)||'[]')); }catch(ex){ callback([]); }
+      console.warn('Firebase get error, usando cache:', e);
+      try{ callback(JSON.parse(localStorage.getItem('impak_processes_'+username)||'[]')); }catch(ex){ callback([]); }
     });
 }
 
-// Busca TODOS os processos (visão Paula/gerente)
+// Busca TODOS os processos — Firebase (sem filtro de usuário)
 function dbGetAllProcesses(callback){
   if(!_firebaseReady || !_db){
     callback(getAllProcesses());
     return;
   }
-  // Sem orderBy para evitar necessidade de índice composto no Firestore
-  // Ordenação feita no JavaScript depois
-  _db.collection('processos')
-    .get()
+  _db.collection('processos').get()
     .then(function(snap){
       var list = [];
       snap.forEach(function(doc){
@@ -1194,37 +1192,51 @@ function dbGetAllProcesses(callback){
         p._userName = u ? u.displayName : (p._user||'?');
         list.push(p);
       });
-      // Ordena por id decrescente no JS
-      list.sort(function(a,b){ return (b.id||'').localeCompare(a.id||''); });
+      list.sort(function(a,b){ return (b._updatedAt||0) > (a._updatedAt||0) ? 1 : -1; }).reverse();
       callback(list);
     })
     .catch(function(e){
-      console.warn('Firebase getAll error:', e);
+      console.warn('Firebase getAll error, usando cache:', e);
       callback(getAllProcesses());
     });
 }
 
-// Deleta processo
+// Deleta processo do Firebase e cache
 function dbDeleteProcess(username, id){
-  var key = 'impak_processes_'+username;
   try{
+    var key = 'impak_processes_'+username;
     var procs = JSON.parse(localStorage.getItem(key)||'[]');
     procs = procs.filter(function(p){ return p.id!==id; });
     localStorage.setItem(key, JSON.stringify(procs));
   }catch(e){}
   if(!_firebaseReady || !_db) return;
-  var docId = username + '_' + id;
-  _db.collection('processos').doc(docId).delete()
+  _db.collection('processos').doc(username+'_'+id).delete()
     .catch(function(e){ console.warn('Firebase delete error:', e); });
 }
 
-// Legacy — não usado mas mantido para compatibilidade
+// Busca processo específico do Firebase
+function dbGetProcess(username, id, callback){
+  if(!_firebaseReady || !_db){
+    var key = 'impak_processes_'+username;
+    try{
+      var procs = JSON.parse(localStorage.getItem(key)||'[]');
+      callback(procs.find(function(p){return p.id===id;})||null);
+    }catch(e){ callback(null); }
+    return;
+  }
+  _db.collection('processos').doc(username+'_'+id).get()
+    .then(function(doc){ callback(doc.exists ? doc.data() : null); })
+    .catch(function(){ callback(null); });
+}
+
+// Legacy stubs
 var _sheetsUrl = '';
 function getSheetsUrl(){ return ''; }
 function saveSheetsUrl(){}
 function testSheetsConnection(){}
 function updateSheetsStatus(){}
 
+// Estado em memória — carregado do Firebase após login
 let _processes = [];
 try{ _processes = JSON.parse(localStorage.getItem('impak_processes')||'[]'); }catch(e){ _processes=[]; }
 
@@ -1238,15 +1250,15 @@ function migrateAlerts(procs){
     return p;
   });
 }
-function saveProcesses(p){
-  _processes=p;
+function saveProcesses(p, procModificado){
+  _processes = p;
   var user = _currentUser ? _currentUser.username : null;
-  // Save to localStorage
+  // Cache local
   try{ localStorage.setItem(getUserKey(), JSON.stringify(p)); }catch(e){}
-  // Sempre sincroniza o processo mais recente com Firebase
+  // Firebase — salva o processo modificado (ou o mais recente)
   if(user && p.length > 0){
-    var latest = p[0];
-    if(latest) dbSaveProcess(user, latest);
+    var toSync = procModificado || p[0];
+    if(toSync) dbSaveProcess(user, toSync);
   }
 }
 // _saveProcesses_placeholder
@@ -1549,7 +1561,7 @@ async function runAnalysis(){
       };
       processes.unshift(proc);
     }
-    saveProcesses(processes);
+    saveProcesses(processes, proc);
     currentResult = proc;
 
     // Restaurar divergências aceitas salvas no processo
@@ -1671,71 +1683,100 @@ function renderResult(r){
 
 // ─── DASHBOARD ────────────────────────────────────────────────────────
 function renderDashboard(){
-  var procs=getProcesses();
-  var total=procs.length;
-  var ok=procs.filter(function(p){return p.status==='ok';}).length;
-  var warn=procs.filter(function(p){return p.status==='warn';}).length;
-  var err=procs.filter(function(p){return p.status==='err';}).length;
+  if(!_currentUser) return;
+  // Busca do Firebase para ter dados sempre atualizados
+  var fetchFn = _currentUser.role === 'gerente' ? dbGetAllProcesses : function(cb){ dbGetProcesses(_currentUser.username, cb); };
+  fetchFn(function(procs){
+    _processes = procs; // atualiza estado local
+    var total=procs.length;
+    var ok=procs.filter(function(p){return p.status==='ok';}).length;
+    var warn=procs.filter(function(p){return p.status==='warn';}).length;
+    var err=procs.filter(function(p){return p.status==='err';}).length;
 
-  var s1=document.getElementById('statTotal');
-  var s2=document.getElementById('statOk');
-  var s3=document.getElementById('statWarn');
-  var s4=document.getElementById('statErr');
-  if(s1) s1.textContent=total;
-  if(s2) s2.textContent=ok;
-  if(s3) s3.textContent=warn;
-  if(s4) s4.textContent=err;
+    var s1=document.getElementById('statTotal');
+    var s2=document.getElementById('statOk');
+    var s3=document.getElementById('statWarn');
+    var s4=document.getElementById('statErr');
+    if(s1) s1.textContent=total;
+    if(s2) s2.textContent=ok;
+    if(s3) s3.textContent=warn;
+    if(s4) s4.textContent=err;
 
-  // Make stat cards clickable - navigate to processos with filter
-  var statCards = [
-    {id:'statCardTotal', filter:''},
-    {id:'statCardOk', filter:'ok'},
-    {id:'statCardWarn', filter:'warn'},
-    {id:'statCardErr', filter:'err'},
-  ];
-  statCards.forEach(function(sc){
-    var card = document.getElementById(sc.id);
-    if(card){
-      card.style.cursor='pointer';
-      card.onclick = function(){
-        showPage('processos');
-        var ps = document.getElementById('procSearch');
-        if(ps){ ps.value=''; }
-        // Filter by status
-        if(sc.filter){
-          renderProcessos('__status:'+sc.filter);
-        } else {
-          renderProcessos('');
-        }
-      };
+    // Make stat cards clickable
+    var statCards = [
+      {id:'statCardTotal', filter:''},
+      {id:'statCardOk', filter:'ok'},
+      {id:'statCardWarn', filter:'warn'},
+      {id:'statCardErr', filter:'err'},
+    ];
+    statCards.forEach(function(sc){
+      var card = document.getElementById(sc.id);
+      if(card){
+        card.style.cursor='pointer';
+        card.onclick = function(){
+          showPage('processos');
+          var ps = document.getElementById('procSearch');
+          if(ps){ ps.value=''; }
+          renderProcessos(sc.filter ? '__status:'+sc.filter : '');
+        };
+      }
+    });
+
+    var recent=document.getElementById('dashRecent');
+    if(!recent) return;
+    if(!procs.length){
+      recent.innerHTML='<div style="text-align:center;color:var(--text-dim);font-size:13px;padding:32px 0;">Nenhum processo ainda.</div>';
+      return;
     }
+    recent.innerHTML=procs.slice(0,5).map(function(p){
+      var sc={ok:'var(--ok)',warn:'var(--warn)',err:'var(--danger)'}[p.status]||'var(--text-dim)';
+      var sl={ok:'OK',warn:'Alertas',err:'Divergências'}[p.status]||'—';
+      var analises=(p.analises||[]).length;
+      var nomeAnalista = p._userName ? ' · <span style="color:var(--accent)">'+p._userName+'</span>' : '';
+      return '<div data-dash-nav="processos" style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border);cursor:pointer;">'
+        +'<div><div style="font-weight:600;font-size:13px;color:var(--text-bright);">'+p.ref+'</div>'
+        +'<div style="font-size:11px;color:var(--text-dim);">'+(p.exportador||'—')+' · '+p.data+' · '+analises+' análise(s)'+nomeAnalista+'</div></div>'
+        +'<span style="font-size:11px;font-weight:700;color:'+sc+';font-family:monospace;">'+sl+'</span>'
+        +'</div>';
+    }).join('');
   });
-
-  var recent=document.getElementById('dashRecent');
-  if(!recent) return;
-  if(!procs.length){
-    recent.innerHTML='<div style="text-align:center;color:var(--text-dim);font-size:13px;padding:32px 0;">Nenhum processo ainda.</div>';
-    return;
-  }
-  recent.innerHTML=procs.slice(0,5).map(function(p){
-    var sc={ok:'var(--ok)',warn:'var(--warn)',err:'var(--danger)'}[p.status]||'var(--text-dim)';
-    var sl={ok:'OK',warn:'Alertas',err:'Divergências'}[p.status]||'—';
-    var analises=(p.analises||[]).length;
-    return '<div data-dash-nav="processos" style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border);cursor:pointer;">'
-      +'<div><div style="font-weight:600;font-size:13px;color:var(--text-bright);">'+p.ref+'</div>'
-      +'<div style="font-size:11px;color:var(--text-dim);">'+(p.exportador||'—')+' · '+p.data+' · '+analises+' análise(s)</div></div>'
-      +'<span style="font-size:11px;font-weight:700;color:'+sc+';font-family:monospace;">'+sl+'</span>'
-      +'</div>';
-  }).join('');
 }
 
 // ─── GESTÃO (manager view) ────────────────────────────────────────────
+function atualizarGestaoManual(){
+  var btn = document.querySelector('[onclick="atualizarGestaoManual()"]');
+  if(btn){ btn.textContent = '↻ Buscando...'; btn.disabled = true; }
+  dbGetAllProcesses(function(fresh){
+    _gestaoAll = fresh;
+    _doRenderGestao();
+    var ts = new Date().toLocaleTimeString('pt-BR', {hour:'2-digit',minute:'2-digit'});
+    var el = document.getElementById('gestaoSyncStatus');
+    if(el) el.textContent = 'Atualizado às ' + ts + ' · ' + fresh.length + ' processo(s)';
+    if(btn){ btn.textContent = '↻ Atualizar'; btn.disabled = false; }
+    showToast('Gestão atualizada — ' + fresh.length + ' processo(s)','ok');
+  });
+}
+
 function _renderGestaoWithData(all){ _gestaoAll=all; _doRenderGestao(); }
 var _gestaoAll=null;
 function renderGestao(){
   var q=(document.getElementById('gestaoSearch').value||'').toLowerCase();
   var filterUser=document.getElementById('gestaoUser').value;
   var filterStatus=document.getElementById('gestaoStatus').value;
+
+  // Auto-sync: atualizar Gestão a cada 30 segundos quando estiver na aba
+  if(!window._gestaoSyncInterval){
+    window._gestaoSyncInterval = setInterval(function(){
+      var activePage = document.querySelector('.page[style*="display: block"], .page[style*="display:block"]');
+      var gestaoPage = document.getElementById('page-gestao');
+      if(gestaoPage && gestaoPage.style.display !== 'none'){
+        dbGetAllProcesses(function(fresh){
+          _gestaoAll = fresh;
+          _doRenderGestao();
+        });
+      }
+    }, 30000);
+  }
 
   var all = [];
   // Sempre usa dbGetAllProcesses (Firebase se disponível, localStorage como fallback)
@@ -1767,6 +1808,11 @@ function renderGestao(){
       + '</div>';
 
     _renderGestaoWithData(all);
+
+    // Atualizar indicador de sync
+    var ts = new Date().toLocaleTimeString('pt-BR', {hour:'2-digit',minute:'2-digit'});
+    var el = document.getElementById('gestaoSyncStatus');
+    if(el) el.textContent = 'Atualizado às ' + ts + ' · ' + all.length + ' processo(s)';
   });
 
   // Populate user dropdown
@@ -1967,49 +2013,59 @@ function openGestaoModal(id, username){
 }
 
 function approveProcess(id, username){
-  var key = 'impak_processes_'+username;
-  try{
-    var procs = JSON.parse(localStorage.getItem(key)||'[]');
-    var p = procs.find(function(x){return x.id===id;});
-    if(p){
-      var now = new Date().toLocaleString('pt-BR');
-      p._approved=true; p._approvedBy=getCurrentUser().displayName; p._approvedAt=now;
-      localStorage.setItem(key, JSON.stringify(procs));
-      dbSaveProcess(username, p); // Firebase
-      closeGestaoModal();
-      renderGestao();
-      showToast('Processo aprovado!','ok');
-    }
-  }catch(e){ showToast('Erro ao aprovar','err'); }
+  if(!_firebaseReady || !_db){ showToast('Firebase não conectado','err'); return; }
+  var docId = username + '_' + id;
+  var now = new Date().toLocaleString('pt-BR');
+  var aprovadoPor = getCurrentUser() ? getCurrentUser().displayName : '?';
+  _db.collection('processos').doc(docId).update({
+    _approved: true, _approvedBy: aprovadoPor, _approvedAt: now, _updatedAt: Date.now()
+  }).then(function(){
+    // Atualiza cache local
+    try{
+      var key = 'impak_processes_'+username;
+      var procs = JSON.parse(localStorage.getItem(key)||'[]');
+      var p = procs.find(function(x){return x.id===id;});
+      if(p){ p._approved=true; p._approvedBy=aprovadoPor; p._approvedAt=now; localStorage.setItem(key, JSON.stringify(procs)); }
+    }catch(e){}
+    closeGestaoModal();
+    renderGestao();
+    showToast('Processo aprovado!','ok');
+  }).catch(function(e){ showToast('Erro ao aprovar: '+e.message,'err'); });
 }
 
 function revokeApproval(id, username){
-  var key = 'impak_processes_'+username;
-  try{
-    var procs = JSON.parse(localStorage.getItem(key)||'[]');
-    var p = procs.find(function(x){return x.id===id;});
-    if(p){ delete p._approved; delete p._approvedBy; delete p._approvedAt;
-      localStorage.setItem(key, JSON.stringify(procs));
-      dbSaveProcess(username, p); // Firebase
-      closeGestaoModal(); renderGestao();
-      showToast('Aprovação revogada','ok');
-    }
-  }catch(e){}
+  if(!_firebaseReady || !_db){ showToast('Firebase não conectado','err'); return; }
+  var docId = username + '_' + id;
+  _db.collection('processos').doc(docId).update({
+    _approved: false, _approvedBy: null, _approvedAt: null, _updatedAt: Date.now()
+  }).then(function(){
+    try{
+      var key = 'impak_processes_'+username;
+      var procs = JSON.parse(localStorage.getItem(key)||'[]');
+      var p = procs.find(function(x){return x.id===id;});
+      if(p){ delete p._approved; delete p._approvedBy; delete p._approvedAt; localStorage.setItem(key, JSON.stringify(procs)); }
+    }catch(e){}
+    closeGestaoModal(); renderGestao();
+    showToast('Aprovação revogada','ok');
+  }).catch(function(e){ showToast('Erro: '+e.message,'err'); });
 }
 
 function saveGestaoComment(id, username, comment){
-  var key = 'impak_processes_'+username;
-  comment = comment || '';
-  try{
-    var procs = JSON.parse(localStorage.getItem(key)||'[]');
-    var p = procs.find(function(x){return x.id===id;});
-    if(p){ p._managerComment=comment; p._managerCommentAt=new Date().toLocaleString('pt-BR');
-      p._managerCommentBy=getCurrentUser().displayName;
-      localStorage.setItem(key, JSON.stringify(procs));
-      dbSaveProcess(username, p); // Firebase
-      renderGestao(); showToast('Comentário salvo!','ok');
-    }
-  }catch(e){ showToast('Erro ao salvar','err'); }
+  if(!_firebaseReady || !_db){ showToast('Firebase não conectado','err'); return; }
+  var docId = username + '_' + id;
+  var by = getCurrentUser() ? getCurrentUser().displayName : '?';
+  var at = new Date().toLocaleString('pt-BR');
+  _db.collection('processos').doc(docId).update({
+    _managerComment: comment||'', _managerCommentBy: by, _managerCommentAt: at, _updatedAt: Date.now()
+  }).then(function(){
+    try{
+      var key = 'impak_processes_'+username;
+      var procs = JSON.parse(localStorage.getItem(key)||'[]');
+      var p = procs.find(function(x){return x.id===id;});
+      if(p){ p._managerComment=comment; p._managerCommentBy=by; p._managerCommentAt=at; localStorage.setItem(key, JSON.stringify(procs)); }
+    }catch(e){}
+    renderGestao(); showToast('Comentário salvo!','ok');
+  }).catch(function(e){ showToast('Erro: '+e.message,'err'); });
 }
 
 function closeGestaoModal(e){
@@ -2045,7 +2101,23 @@ function clearAllHistory(){
 
 
 function renderProcessos(filter){
-  var procs=getProcesses();
+  if(_currentUser && _currentUser.role === 'gerente'){
+    // Gerente vê todos — busca do Firebase
+    dbGetAllProcesses(function(all){
+      _renderProcessosList(all, filter);
+    });
+  } else if(_currentUser){
+    // Analista vê só os dela — busca do Firebase filtrado
+    dbGetProcesses(_currentUser.username, function(procs){
+      _processes = procs; // atualiza estado local
+      _renderProcessosList(procs, filter);
+    });
+  } else {
+    _renderProcessosList([], filter);
+  }
+}
+
+function _renderProcessosList(procs, filter){
   var statusFilter = '';
   var q = (filter||'').toLowerCase().trim();
   if(q.startsWith('__status:')){
@@ -2079,11 +2151,12 @@ function renderProcessos(filter){
       :alerts
       ?'<span style="color:var(--warn);font-size:11px;font-weight:700;">⚠ '+alerts+' alertas</span>'
       :'<span style="color:var(--ok);font-size:11px;font-weight:700;">✓ OK</span>';
-    return '<div data-proc-id="'+p.id+'" style="background:var(--surface);border:1px solid var(--border2);border-radius:8px;padding:16px;margin-bottom:10px;cursor:pointer;">'
+    return '<div data-proc-id="'+p.id+'" data-proc-user="'+(p._user||'')+'" style="background:var(--surface);border:1px solid var(--border2);border-radius:8px;padding:16px;margin-bottom:10px;cursor:pointer;">'
       +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">'
       +'<div style="display:flex;align-items:center;gap:10px;">'
       +'<span style="font-size:15px;font-weight:800;color:var(--accent);font-family:monospace;">'+p.ref+'</span>'
       +'<span style="font-size:11px;color:var(--text-dim);">'+(p.exportador||'')+'</span>'
+      +(p._userName?'<span style="font-size:10px;padding:2px 7px;border-radius:10px;background:var(--accent-dim);color:var(--accent);">'+p._userName+'</span>':'')
       +'</div>'+badge+'</div>'
       +'<div style="display:flex;flex-wrap:wrap;gap:12px;font-size:11px;color:var(--text-dim);">'
       +'<span>'+p.data+'</span>'
@@ -2095,15 +2168,33 @@ function renderProcessos(filter){
   // Click handler via delegation
   list.onclick=function(e){
     var card=e.target.closest('[data-proc-id]');
-    if(card) openProcess(parseInt(card.getAttribute('data-proc-id')));
+    if(card) openProcess(parseInt(card.getAttribute('data-proc-id')), card.getAttribute('data-proc-user')||null);
   };
 }
 
 
-function openProcess(id){
-  var procs=getProcesses();
-  var p=procs.find(function(x){return x.id===id;});
-  if(!p) return;
+function openProcess(id, procUser){
+  var ownerUser = procUser || (_currentUser ? _currentUser.username : null);
+  if(!ownerUser) return;
+
+  // Busca do Firebase (fonte de verdade)
+  dbGetProcess(ownerUser, id, function(p){
+    if(!p){
+      // Fallback: tenta cache local
+      try{
+        var procs = JSON.parse(localStorage.getItem('impak_processes_'+ownerUser)||'[]');
+        p = procs.find(function(x){return x.id===id;});
+      }catch(e){}
+    }
+    if(!p){ showToast('Processo não encontrado','err'); return; }
+    p._ownerUser = ownerUser;
+    _renderProcessModal(p);
+  });
+}
+
+function _renderProcessModal(p){
+  var id = p.id;
+  var ownerUser = p._ownerUser;
 
   document.getElementById('modalTitle').textContent='Processo '+p.ref;
   document.getElementById('modalSub').textContent=(p.exportador||'')+' · '+p.data;
@@ -2255,7 +2346,7 @@ function openProcess(id){
   html+='</div>';
   html+='<div style="margin-top:14px;display:flex;gap:8px;">';
   html+='<input class="field-input" id="logInput" placeholder="Adicionar anotação..." style="flex:1;font-size:12px">';
-  html+='<button class="btn btn-ghost btn-sm" onclick="addLog('+id+')">+ Adicionar</button>';
+  html+='<button class="btn btn-ghost btn-sm" onclick="addLog('+id+', \''+(p._ownerUser||'')+'\')">+ Adicionar</button>';
   html+='</div></div>';
 
   document.getElementById('modalBody').innerHTML=html;
@@ -2287,25 +2378,36 @@ function toggleAnalise(id){
 }
 
 
-function addLog(id){
+function addLog(id, ownerUser){
   const input=document.getElementById('logInput');
   const msg=input.value.trim();
   if(!msg) return;
-  const procs=getProcesses();
-  const p=procs.find(x=>x.id===id);
-  if(!p) return;
-  p.log=p.log||[];
-  p.log.push({msg,time:new Date().toLocaleString('pt-BR'),type:'ok'});
-  saveProcesses(procs);
+  var targetUser = ownerUser || (_currentUser ? _currentUser.username : null);
+  var quem = _currentUser ? _currentUser.displayName : '?';
   input.value='';
-  openProcess(id);
+  // Busca processo do Firebase, adiciona log e salva
+  dbGetProcess(targetUser, id, function(p){
+    if(!p){ showToast('Processo não encontrado','err'); return; }
+    p.log = p.log||[];
+    p.log.push({ msg:'['+quem+'] '+msg, time:new Date().toLocaleString('pt-BR'), type:'ok' });
+    dbSaveProcess(targetUser, p);
+    openProcess(id, ownerUser);
+    showToast('Anotação salva!','ok');
+  });
+}
   showToast('Anotação salva!','ok');
 }
 
 function deleteProcess(id){
   if(!confirm('Excluir este processo? Esta ação não pode ser desfeita.')) return;
-  const procs=getProcesses().filter(p=>p.id!==id);
-  saveProcesses(procs);
+  var user = _currentUser ? _currentUser.username : null;
+  if(!user) return;
+  // Remove do Firebase
+  dbDeleteProcess(user, id);
+  // Remove do estado local
+  var procs = getProcesses().filter(function(p){ return p.id!==id; });
+  _processes = procs;
+  try{ localStorage.setItem(getUserKey(), JSON.stringify(procs)); }catch(e){}
   document.getElementById('modalBg').classList.remove('show');
   renderProcessos();
   renderDashboard();
@@ -2489,7 +2591,7 @@ if(divergResolved[key]){
       if(proc2a){
         proc2a._divResolvedMap = proc2a._divResolvedMap || {};
         proc2a._divResolvedMap[key] = {nota:nota, time:new Date().toLocaleString('pt-BR'), por: _currentUser ? _currentUser.displayName : ''};
-        saveProcesses(procs2a);
+        saveProcesses(procs2a, proc2a);
       }
     }
   }catch(e){}
@@ -2513,7 +2615,7 @@ if(divergResolved[key]){
           var badge = pills.querySelector('.pill-err');
           if(badge) badge.textContent='✓ 0 Divergências';
         }
-        saveProcesses(procs2);
+        saveProcesses(procs2, proc2);
         renderDashboard();
         renderProcessos();
       }
@@ -2523,7 +2625,6 @@ if(divergResolved[key]){
 }
 }
 }
-
 
 function copyDivergencias(){
   const L=LANG[getLang()];
