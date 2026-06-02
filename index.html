@@ -1739,6 +1739,31 @@ function renderGestao(){
   // Sempre usa dbGetAllProcesses (Firebase se disponível, localStorage como fallback)
   dbGetAllProcesses(function(sheetAll){
     all = sheetAll;
+
+    // ── DIAGNÓSTICO SIMPLES ───────────────────────────────────
+    var banner = document.getElementById('gestaoDiagBanner');
+    if(!banner){
+      banner = document.createElement('div');
+      banner.id = 'gestaoDiagBanner';
+      var gestaoWrap = document.getElementById('gestaoStats');
+      if(gestaoWrap && gestaoWrap.parentNode){
+        gestaoWrap.parentNode.insertBefore(banner, gestaoWrap);
+      }
+    }
+    var contagem = {};
+    all.forEach(function(p){
+      var u = p._user || 'desconhecido';
+      contagem[u] = (contagem[u]||0) + 1;
+    });
+    var contagemTxt = Object.keys(contagem).map(function(u){
+      return u + ': ' + contagem[u];
+    }).join(' · ');
+    banner.innerHTML = '<div style="background:rgba(10,45,94,0.5);border:1px solid var(--border);border-radius:8px;padding:8px 14px;margin-bottom:12px;font-size:11px;color:var(--text-dim);">'
+      + '<span style="color:var(--ok);margin-right:6px;">●</span>'
+      + 'Firebase: <strong style="color:var(--text-bright);">' + all.length + ' processo(s)</strong>'
+      + (all.length > 0 ? ' &nbsp;·&nbsp; ' + contagemTxt : ' — nenhum processo salvo ainda')
+      + '</div>';
+
     _renderGestaoWithData(all);
   });
 
