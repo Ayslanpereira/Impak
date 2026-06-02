@@ -8,8 +8,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=DM+Mono:wght@300;400;500&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,300&display=swap" rel="stylesheet">
 <!-- Firebase SDK -->
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 <style>
 :root {
   --bg: #f0f4f8;
@@ -1109,6 +1109,11 @@ var _db = null;
 var _firebaseReady = false;
 
 function initFirebase(){
+  if(typeof firebase === 'undefined'){
+    // SDK ainda não carregou, tenta novamente em 500ms
+    setTimeout(initFirebase, 500);
+    return;
+  }
   try {
     if (!firebase.apps.length) {
       firebase.initializeApp(FIREBASE_CONFIG);
@@ -1158,11 +1163,12 @@ function dbGetProcesses(username, callback){
   }
   _db.collection('processos')
     .where('_user','==', username)
-    .orderBy('id','desc')
     .get()
     .then(function(snap){
       var list = [];
       snap.forEach(function(doc){ list.push(doc.data()); });
+      // Ordena por id decrescente no JS
+      list.sort(function(a,b){ return (b.id||'').localeCompare(a.id||''); });
       // Atualiza localStorage como cache
       try{ localStorage.setItem('impak_processes_'+username, JSON.stringify(list)); }catch(e){}
       callback(list);
@@ -1180,8 +1186,9 @@ function dbGetAllProcesses(callback){
     callback(getAllProcesses());
     return;
   }
+  // Sem orderBy para evitar necessidade de índice composto no Firestore
+  // Ordenação feita no JavaScript depois
   _db.collection('processos')
-    .orderBy('id','desc')
     .get()
     .then(function(snap){
       var list = [];
@@ -1191,6 +1198,8 @@ function dbGetAllProcesses(callback){
         p._userName = u ? u.displayName : (p._user||'?');
         list.push(p);
       });
+      // Ordena por id decrescente no JS
+      list.sort(function(a,b){ return (b.id||'').localeCompare(a.id||''); });
       callback(list);
     })
     .catch(function(e){
