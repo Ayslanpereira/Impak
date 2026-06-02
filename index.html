@@ -990,7 +990,7 @@ function guessType(name){
 // ─── USER SYSTEM ──────────────────────────────────────────────────────
 var USERS = [
   { username: 'paula',    password: '1234', role: 'gerente',  displayName: 'Paula' },
-  { username: 'emanuele', password: '1234', role: 'analista', displayName: 'Emanuelly' },
+  { username: 'emanuelly', password: '1234', role: 'analista', displayName: 'Emanuelly' },
 ];
 
 var _currentUser = null;
@@ -2030,7 +2030,7 @@ function clearAllHistory(){
       }).catch(function(e){ console.warn('Erro ao limpar Firebase:', e); });
     }
     localStorage.removeItem('impak_processes_paula');
-    localStorage.removeItem('impak_processes_emanuele');
+    localStorage.removeItem('impak_processes_emanuelly');
     localStorage.removeItem('impak_processes');
     _processes = [];
     currentResult = null;
