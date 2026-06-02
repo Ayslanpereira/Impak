@@ -806,16 +806,31 @@ textarea.field-input{resize:vertical;min-height:80px;}
 </div>
 
 <!-- Process Detail Modal -->
-<div class="modal-bg" id="modalBg" onclick="closeModal(event)">
+<div class="modal-bg" id="modalBg" onclick="closeModal(event)" style="display:none;">
   <div class="modal" id="modalContent">
     <div class="modal-title" id="modalTitle">Processo</div>
     <div class="modal-sub" id="modalSub"></div>
     <div id="modalBody"></div>
     <div class="modal-actions">
       <button class="btn btn-danger btn-sm" id="modalDeleteBtn">Excluir</button>
-      <button class="btn btn-ghost" onclick="document.getElementById('modalBg').classList.remove('show')">Fechar</button>
+      <button class="btn btn-ghost" onclick="fecharDetalheProcesso()">Fechar</button>
     </div>
   </div>
+</div>
+
+<!-- Página de detalhe do processo (tela cheia) -->
+<div class="page" id="page-detalhe-processo">
+  <div class="page-header">
+    <div>
+      <div class="page-title" id="detalheProcTitle">Processo</div>
+      <div class="page-sub" id="detalheProcSub"></div>
+    </div>
+    <div style="display:flex;gap:8px;">
+      <button class="btn btn-danger btn-sm" id="detalheProcDeleteBtn">Excluir</button>
+      <button class="btn btn-ghost" onclick="fecharDetalheProcesso()">← Voltar</button>
+    </div>
+  </div>
+  <div id="detalheProcBody"></div>
 </div>
 
 <!-- Message Modal -->
@@ -1317,11 +1332,15 @@ function showPage(id){
   document.querySelectorAll('.nav-item').forEach(n=>{
     if(n.getAttribute('onclick')&&n.getAttribute('onclick').includes(id)) n.classList.add('active');
   });
+  // Sempre recarrega dados do Firebase ao trocar de aba
   if(id==='dashboard') renderDashboard();
-  if(id==='conferencia'){ var ra2=document.getElementById('resultArea'); if(ra2) ra2.style.display='none'; } setupDropZone();
   if(id==='processos'){ var ps=document.getElementById('procSearch'); if(ps) ps.value=''; renderProcessos(''); }
-  if(id==='gestao'){ renderGestao(); }
-  if(id==='processos') renderProcessos();
+  if(id==='gestao') renderGestao();
+  if(id==='conferencia'){
+    var ra2=document.getElementById('resultArea');
+    if(ra2) ra2.style.display='none';
+    setupDropZone();
+  }
   window.scrollTo(0,0);
 }
 
@@ -1760,143 +1779,110 @@ function atualizarGestaoManual(){
 function _renderGestaoWithData(all){ _gestaoAll=all; _doRenderGestao(); }
 var _gestaoAll=null;
 function renderGestao(){
-  var q=(document.getElementById('gestaoSearch').value||'').toLowerCase();
-  var filterUser=document.getElementById('gestaoUser').value;
-  var filterStatus=document.getElementById('gestaoStatus').value;
-
-  // Auto-sync: atualizar Gestão a cada 30 segundos quando estiver na aba
+  // Auto-sync a cada 30 segundos
   if(!window._gestaoSyncInterval){
     window._gestaoSyncInterval = setInterval(function(){
-      var activePage = document.querySelector('.page[style*="display: block"], .page[style*="display:block"]');
       var gestaoPage = document.getElementById('page-gestao');
-      if(gestaoPage && gestaoPage.style.display !== 'none'){
-        dbGetAllProcesses(function(fresh){
-          _gestaoAll = fresh;
-          _doRenderGestao();
-        });
-      }
+      if(gestaoPage && gestaoPage.style.display !== 'none') renderGestao();
     }, 30000);
   }
 
-  var all = [];
-  // Sempre usa dbGetAllProcesses (Firebase se disponível, localStorage como fallback)
-  dbGetAllProcesses(function(sheetAll){
-    all = sheetAll;
+  dbGetAllProcesses(function(all){
+    var q=(document.getElementById('gestaoSearch')||{value:''}).value.toLowerCase();
+    var filterUser=(document.getElementById('gestaoUser')||{value:''}).value;
+    var filterStatus=(document.getElementById('gestaoStatus')||{value:''}).value;
 
-    // ── DIAGNÓSTICO SIMPLES ───────────────────────────────────
+    // Banner diagnóstico
     var banner = document.getElementById('gestaoDiagBanner');
     if(!banner){
       banner = document.createElement('div');
       banner.id = 'gestaoDiagBanner';
-      var gestaoWrap = document.getElementById('gestaoStats');
-      if(gestaoWrap && gestaoWrap.parentNode){
-        gestaoWrap.parentNode.insertBefore(banner, gestaoWrap);
+      var gw = document.getElementById('gestaoStats');
+      if(gw && gw.parentNode) gw.parentNode.insertBefore(banner, gw);
+    }
+    var contagem={};
+    all.forEach(function(p){ var u=p._user||'?'; contagem[u]=(contagem[u]||0)+1; });
+    var ct=Object.keys(contagem).map(function(u){return u+': '+contagem[u];}).join(' · ');
+    banner.innerHTML='<div style="background:rgba(10,45,94,0.5);border:1px solid var(--border);border-radius:8px;padding:8px 14px;margin-bottom:12px;font-size:11px;color:var(--text-dim);"><span style="color:var(--ok);margin-right:6px;">●</span>Firebase: <strong style="color:var(--text-bright);">'+all.length+' processo(s)</strong>'+(all.length>0?' &nbsp;·&nbsp; '+ct:' — nenhum processo salvo ainda')+'</div>';
+
+    // Sync status
+    var ts=new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+    var syncEl=document.getElementById('gestaoSyncStatus');
+    if(syncEl) syncEl.textContent='Atualizado às '+ts+' · '+all.length+' processo(s)';
+
+    // Dropdown usuários
+    var sel=document.getElementById('gestaoUser');
+    if(sel){
+      var existing=Array.from(sel.options).map(function(o){return o.value;});
+      USERS.forEach(function(u){
+        if(!existing.includes(u.username)){
+          var opt=document.createElement('option');
+          opt.value=u.username; opt.textContent=u.displayName; sel.appendChild(opt);
+        }
+      });
+    }
+
+    // Filtrar
+    var procs=all.filter(function(p){
+      if(filterUser && p._user!==filterUser) return false;
+      if(filterStatus && p.status!==filterStatus) return false;
+      if(q){
+        var s=[p.ref||'',p.exportador||'',p._userName||'',(p.analises||[]).map(function(a){return a.docs||'';}).join(' ')].join(' ').toLowerCase();
+        if(!s.includes(q)) return false;
       }
-    }
-    var contagem = {};
-    all.forEach(function(p){
-      var u = p._user || 'desconhecido';
-      contagem[u] = (contagem[u]||0) + 1;
+      return true;
     });
-    var contagemTxt = Object.keys(contagem).map(function(u){
-      return u + ': ' + contagem[u];
-    }).join(' · ');
-    banner.innerHTML = '<div style="background:rgba(10,45,94,0.5);border:1px solid var(--border);border-radius:8px;padding:8px 14px;margin-bottom:12px;font-size:11px;color:var(--text-dim);">'
-      + '<span style="color:var(--ok);margin-right:6px;">●</span>'
-      + 'Firebase: <strong style="color:var(--text-bright);">' + all.length + ' processo(s)</strong>'
-      + (all.length > 0 ? ' &nbsp;·&nbsp; ' + contagemTxt : ' — nenhum processo salvo ainda')
-      + '</div>';
 
-    _renderGestaoWithData(all);
-
-    // Atualizar indicador de sync
-    var ts = new Date().toLocaleTimeString('pt-BR', {hour:'2-digit',minute:'2-digit'});
-    var el = document.getElementById('gestaoSyncStatus');
-    if(el) el.textContent = 'Atualizado às ' + ts + ' · ' + all.length + ' processo(s)';
-  });
-
-  // Populate user dropdown
-  var sel = document.getElementById('gestaoUser');
-  var existing = Array.from(sel.options).map(function(o){return o.value;});
-  USERS.forEach(function(u){
-    if(!existing.includes(u.username)){
-      var opt = document.createElement('option');
-      opt.value = u.username; opt.textContent = u.displayName;
-      sel.appendChild(opt);
+    // Stats
+    var stats=document.getElementById('gestaoStats');
+    if(stats){
+      var total=procs.length,
+          errs=procs.filter(function(p){return p.status==='err';}).length,
+          warns=procs.filter(function(p){return p.status==='warn';}).length,
+          oks=procs.filter(function(p){return p.status==='ok';}).length;
+      stats.innerHTML=[['Total',total,'var(--accent)'],['Divergências',errs,'var(--danger)'],['Alertas',warns,'var(--warn)'],['OK',oks,'var(--ok)']].map(function(s){
+        return '<div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:16px;text-align:center;"><div style="font-size:28px;font-weight:700;color:'+s[2]+';">'+s[1]+'</div><div style="font-size:11px;color:var(--text-dim);">'+s[0]+'</div></div>';
+      }).join('');
     }
-  });
 
-  // Filter
-  var procs = all.filter(function(p){
-    if(filterUser && p._user !== filterUser) return false;
-    if(filterStatus && p.status !== filterStatus) return false;
-    if(q){
-      var s=[p.ref||'',p.exportador||'',p._userName||'',
-        (p.analises||[]).map(function(a){return a.docs||'';}).join(' ')
-      ].join(' ').toLowerCase();
-      if(!s.includes(q)) return false;
+    // Lista
+    var list=document.getElementById('gestaoList');
+    if(!list) return;
+    if(!procs.length){
+      list.innerHTML='<div style="text-align:center;color:var(--text-dim);padding:32px;">Nenhum processo encontrado.</div>';
+      return;
     }
-    return true;
+    list.innerHTML=procs.map(function(p){
+      var analises=p.analises||[];
+      var last=analises.length?analises[analises.length-1]:null;
+      var divs=last&&last.resumo?last.resumo.divergencias:0;
+      var alerts=last&&last.resumo?last.resumo.alertas:0;
+      var badge=divs?'<span style="color:var(--danger);font-size:11px;font-weight:700;">✗ '+divs+' diverg.</span>':alerts?'<span style="color:var(--warn);font-size:11px;font-weight:700;">⚠ '+alerts+' alertas</span>':'<span style="color:var(--ok);font-size:11px;font-weight:700;">✓ OK</span>';
+      var approved=p._approved?'<span style="color:var(--ok);font-size:10px;margin-left:6px;">✓ Aprovado por '+p._approvedBy+'</span>':'';
+      var hasComment=p._managerComment?'<span style="color:var(--accent);font-size:10px;margin-left:6px;">💬 comentário</span>':'';
+      return '<div data-gestao-id="'+p.id+'" data-gestao-user="'+(p._user||'')+'" style="background:var(--surface);border:1px solid var(--border2);border-radius:8px;padding:16px;margin-bottom:10px;cursor:pointer;"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;"><div style="display:flex;align-items:center;gap:10px;"><span style="font-size:15px;font-weight:800;color:var(--accent);font-family:monospace;">'+p.ref+'</span><span style="font-size:11px;color:var(--text-dim);">'+(p.exportador||'')+'</span><span style="font-size:11px;padding:2px 8px;border-radius:100px;background:var(--accent-dim);color:var(--accent);">'+(p._userName||p._user||'?')+'</span>'+approved+hasComment+'</div>'+badge+'</div><div style="display:flex;flex-wrap:wrap;gap:12px;font-size:11px;color:var(--text-dim);"><span>'+(p.data||'')+'</span><span>'+analises.length+' análise(s)</span>'+(last?'<span>Última: '+last.data+'</span>':'')+(last?'<span style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+last.docs+'</span>':'')+'</div></div>';
+    }).join('');
+    list.onclick=function(e){
+      var card=e.target.closest('[data-gestao-id]');
+      if(card) openGestaoModal(parseInt(card.getAttribute('data-gestao-id')),card.getAttribute('data-gestao-user'));
+    };
   });
-
-  // Stats
-  var stats = document.getElementById('gestaoStats');
-  var total=procs.length, errs=procs.filter(function(p){return p.status==='err';}).length,
-      warns=procs.filter(function(p){return p.status==='warn';}).length,
-      oks=procs.filter(function(p){return p.status==='ok';}).length;
-  stats.innerHTML=[
-    ['Total',total,'var(--accent)'],
-    ['Divergências',errs,'var(--danger)'],
-    ['Alertas',warns,'var(--warn)'],
-    ['OK',oks,'var(--ok)']
-  ].map(function(s){
-    return '<div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:16px;text-align:center;">'
-      +'<div style="font-size:28px;font-weight:700;color:'+s[2]+';">'+s[1]+'</div>'
-      +'<div style="font-size:11px;color:var(--text-dim);">'+s[0]+'</div></div>';
-  }).join('');
-
-  // List
-  var list = document.getElementById('gestaoList');
-  if(!procs.length){
-    list.innerHTML='<div style="text-align:center;color:var(--text-dim);padding:32px;">Nenhum processo encontrado.</div>';
-    return;
-  }
-  list.innerHTML = procs.map(function(p){
-    var analises=p.analises||[];
-    var last=analises.length?analises[analises.length-1]:null;
-    var divs=last&&last.resumo?last.resumo.divergencias:0;
-    var alerts=last&&last.resumo?last.resumo.alertas:0;
-    var badge=divs?'<span style="color:var(--danger);font-size:11px;font-weight:700;">✗ '+divs+' diverg.</span>'
-      :alerts?'<span style="color:var(--warn);font-size:11px;font-weight:700;">⚠ '+alerts+' alertas</span>'
-      :'<span style="color:var(--ok);font-size:11px;font-weight:700;">✓ OK</span>';
-    var approved = p._approved ? '<span style="color:var(--ok);font-size:10px;margin-left:6px;">✓ Aprovado por '+p._approvedBy+'</span>' : '';
-    var hasComment = p._managerComment ? '<span style="color:var(--accent);font-size:10px;margin-left:6px;">💬 comentário</span>' : '';
-    return '<div data-gestao-id="'+p.id+'" data-gestao-user="'+(p._user||'')+'" style="background:var(--surface);border:1px solid var(--border2);border-radius:8px;padding:16px;margin-bottom:10px;cursor:pointer;">'
-      +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">'
-      +'<div style="display:flex;align-items:center;gap:10px;">'
-      +'<span style="font-size:15px;font-weight:800;color:var(--accent);font-family:monospace;">'+p.ref+'</span>'
-      +'<span style="font-size:11px;color:var(--text-dim);">'+(p.exportador||'')+'</span>'
-      +'<span style="font-size:11px;padding:2px 8px;border-radius:100px;background:var(--accent-dim);color:var(--accent);">'+p._userName+'</span>'
-      +approved+hasComment
-      +'</div>'+badge+'</div>'
-      +'<div style="display:flex;flex-wrap:wrap;gap:12px;font-size:11px;color:var(--text-dim);">'
-      +'<span>'+p.data+'</span>'
-      +'<span>'+analises.length+' análise(s)</span>'
-      +(last?'<span>Última: '+last.data+'</span>':'')
-      +(last?'<span style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+last.docs+'</span>':'')
-      +'</div></div>';
-  }).join('');
-
-  list.onclick = function(e){
-    var card = e.target.closest('[data-gestao-id]');
-    if(card) openGestaoModal(parseInt(card.getAttribute('data-gestao-id')), card.getAttribute('data-gestao-user'));
-  };
 }
 
 function openGestaoModal(id, username){
-  var all = getAllProcesses();
-  var p = all.find(function(x){ return x.id===id && x._user===username; });
-  if(!p) return;
+  if(!username){ showToast('Usuário não identificado','err'); return; }
+  // Busca do Firebase diretamente
+  dbGetProcess(username, id, function(p){
+    if(!p){
+      // fallback cache
+      try{ var procs=JSON.parse(localStorage.getItem('impak_processes_'+username)||'[]'); p=procs.find(function(x){return x.id===id;}); }catch(e){}
+    }
+    if(!p){ showToast('Processo não encontrado','err'); return; }
+    _renderGestaoModal(p, username);
+  });
+}
+
+function _renderGestaoModal(p, username){
   var analises = p.analises||[];
   var last = analises.length ? analises[analises.length-1] : null;
 
@@ -2196,9 +2182,9 @@ function _renderProcessModal(p){
   var id = p.id;
   var ownerUser = p._ownerUser;
 
-  document.getElementById('modalTitle').textContent='Processo '+p.ref;
-  document.getElementById('modalSub').textContent=(p.exportador||'')+' · '+p.data;
-  document.getElementById('modalDeleteBtn').onclick=function(){deleteProcess(id);};
+  document.getElementById('detalheProcTitle').textContent = 'Processo ' + p.ref;
+  document.getElementById('detalheProcSub').textContent = (p.exportador||'') + ' · ' + p.data + (p._userName ? ' · ' + p._userName : '');
+  document.getElementById('detalheProcDeleteBtn').onclick = function(){ deleteProcess(id); };
 
   var analises=p.analises||[];
   // Backwards compat: if no analises array, create one from existing data
@@ -2349,17 +2335,16 @@ function _renderProcessModal(p){
   html+='<button class="btn btn-ghost btn-sm" onclick="addLog('+id+', \''+(p._ownerUser||'')+'\')">+ Adicionar</button>';
   html+='</div></div>';
 
-  document.getElementById('modalBody').innerHTML=html;
+  document.getElementById('detalheProcBody').innerHTML=html;
 
-  // Event delegation for Nova Análise button
-  document.getElementById('modalBody').onclick=function(e){
-    // Handle toggle analise
+  // Event delegation
+  document.getElementById('detalheProcBody').onclick=function(e){
     var tog=e.target.closest('[data-toggle]');
     if(tog){ toggleAnalise(tog.getAttribute('data-toggle')); return; }
     var btn=e.target.closest('[data-ref]');
     if(btn&&btn.className.includes('btn')){
       var ref2=btn.getAttribute('data-ref');
-      document.getElementById('modalBg').classList.remove('show');
+      fecharDetalheProcesso();
       showPage('conferencia');
       setTimeout(function(){
         var refEl=document.getElementById('procRef');
@@ -2369,7 +2354,15 @@ function _renderProcessModal(p){
     }
   };
 
-  document.getElementById('modalBg').classList.add('show');
+  // Navegar para a página de detalhe
+  _paginaAnterior = document.querySelector('.page.active')?.id?.replace('page-','') || 'processos';
+  showPage('detalhe-processo');
+}
+
+var _paginaAnterior = 'processos';
+
+function fecharDetalheProcesso(){
+  showPage(_paginaAnterior || 'processos');
 }
 
 function toggleAnalise(id){
@@ -2400,13 +2393,11 @@ function deleteProcess(id){
   if(!confirm('Excluir este processo? Esta ação não pode ser desfeita.')) return;
   var user = _currentUser ? _currentUser.username : null;
   if(!user) return;
-  // Remove do Firebase
   dbDeleteProcess(user, id);
-  // Remove do estado local
   var procs = getProcesses().filter(function(p){ return p.id!==id; });
   _processes = procs;
   try{ localStorage.setItem(getUserKey(), JSON.stringify(procs)); }catch(e){}
-  document.getElementById('modalBg').classList.remove('show');
+  fecharDetalheProcesso();
   renderProcessos();
   renderDashboard();
   showToast('Processo excluído.','ok');
