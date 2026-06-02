@@ -750,7 +750,7 @@ textarea.field-input{resize:vertical;min-height:80px;}
   </div>
 
   <!-- Results -->
-  <div id="resultArea" style="display:none">
+  <div id="resultArea" style="display:none;margin-left:-24px;margin-right:-24px;padding:0 24px;background:var(--bg2);border-top:1px solid var(--border);padding-top:24px;margin-top:8px;">
     <div class="sec">03 — Relatório de Conferência</div>
     <div class="result-header">
       <div class="pills" id="resultPills"></div>
@@ -780,12 +780,8 @@ textarea.field-input{resize:vertical;min-height:80px;}
     </div>
     <div id="checkGroups"></div>
     <div id="alertsArea"></div>
-    <div id="divPanelWrap" style="display:none;margin-top:28px;">
-      <div class="sec">Divergências — Gestão e Resolução</div>
-      <div id="divPanel"></div>
-    </div>
 
-    <!-- Divergencias Panel -->
+    <!-- Divergencias Panel — único -->
     <div id="divPanelWrap" style="display:none;margin-top:28px;">
       <div class="sec" style="margin-bottom:14px;">
         <span id="divPanelTitle">Divergências — Gestão e Resolução</span>
@@ -994,7 +990,7 @@ function guessType(name){
 // ─── USER SYSTEM ──────────────────────────────────────────────────────
 var USERS = [
   { username: 'paula',    password: '1234', role: 'gerente',  displayName: 'Paula' },
-  { username: 'emanuele', password: '1234', role: 'analista', displayName: 'Emanuele' },
+  { username: 'emanuele', password: '1234', role: 'analista', displayName: 'Emanuelly' },
 ];
 
 var _currentUser = null;
@@ -1459,14 +1455,15 @@ async function runAnalysis(){
       + 'Schema: {"resumo":{"campos_ok":0,"divergencias":0,"alertas":0},"grupos":[{"titulo":"","campos":[{"campo":"","doc1_label":"","doc1_valor":"","doc2_label":"","doc2_valor":"","status":"OK","observacao":null}]}],"alertas":[""]}. '
       + 'REGRA GERAL: Mostrar APENAS erros. Usar nome real do doc (CI,PL,BL,PI,CE). Nunca "Documento 1". '
       + 'PASSO 1 - CAMPOS OBRIGATORIOS: '
-      + 'CI/PI: exportador(nome+end), importador(nome+end), encomendante(se houver), forma+moeda pagamento, porto origem, porto destino, descricao itens, marca+ref volumes, qtd+especie volumes, valores unit+total, peso bruto+liquido, incoterm, pais origem+aquisicao+procedencia, dados bancarios. SE incoterm!=FOB: frete internacional obrigatorio. PI e CI devem ser identicas - qualquer diferenca=DIVERGENCIA com doc1_label=PI doc2_label=CI. '
+      + 'CI/PI: exportador(nome+end), importador(nome+end), encomendante(se houver), forma+moeda pagamento, porto origem, porto destino, descricao itens, marca+ref volumes, qtd+especie volumes, valores unit+total, peso bruto+liquido, INCOTERM(obrigatorio na CI - se ausente=DIVERGENCIA, valores aceitos: FOB/CIF/CFR/EXW/DDP/DAP/FCA), pais origem+aquisicao+procedencia, dados bancarios. SE incoterm!=FOB: frete internacional obrigatorio. PI e CI devem ser identicas - qualquer diferenca=DIVERGENCIA com doc1_label=PI doc2_label=CI. '
       + 'PL: importador, encomendante(se buyer preenchido na PI/CI), porto origem+destino, descricao itens, qtd+especie, pesos unit+totais, peso bruto+liquido, produto(deve conter TIRE/TYRE/PNEU/RADIAL senao DIVERGENCIA), pais origem+aquisicao, end fabricante, marca+numeracao volumes. Container/BL/lacre=OPCIONAL. '
-      + 'BL: shipper, notify, consignee, porto origem+destino, peso, qtd, NCM, descricao, free time, valor frete, prepaid/collect, container+lacre(se constar PI/CI/PL deve ser identico), wooden(WOODEN/WOOD/PALLET/NOT APPLICABLE obrigatorio senao DIVERGENCIA). '
-      + 'CE: cruzar navio/embarque pelo campo Transbordo/Baldeacao(se vazio usar manifesto). Numero CE nao cruzar. '
+      + 'BL: shipper, notify, consignee, porto origem+destino, peso, qtd, NCM, descricao, free time, valor frete, prepaid/collect, container+lacre(se constar PI/CI/PL - ao comparar lacre IGNORAR espacos, quebras de linha e hifens - tratar EMCCWW0805 e EMCCWW-0805 como identicos), wooden(WOODEN/WOOD/PALLET/NOT APPLICABLE obrigatorio senao DIVERGENCIA). '
+      + 'CE: cruzar navio/embarque pelo campo Transbordo/Baldeacao(se vazio usar manifesto). Numero CE nao cruzar. IMPORTANTE: campo "Condicao de pagamento" ou "Situacao pagamento" do CE Mercante com valor "Suspenso" ou "Suspensao" ou "Sem cobertura cambial" eh NORMAL para importacoes brasileiras - NAO gerar alerta ou divergencia para esse campo. '
       + 'PASSO 2 - CRUZAMENTO: Comparar todos campos entre todos docs. Campo presente num doc e ausente em outro=DIVERGENCIA. Dados bancarios identicos em todos. '
       + 'Grupos: Identificacao|Importador|Comprador Final(buyer!=importador=normal)|Exportador|Mercadoria|Valores|Pesos|Logistica|CE Mercante|Pais Origem. '
       + 'PASSO 3 - EUDEMON: Se marca EUDEMON verificar codigo em CI/PI/PL: 3301000094ab=275/80R22.5 UD188 149/146L 18PR|3302001532eu=275/80R22.5 UF195 149/146L 18PR|3302002217=295/80R22.5 UD188 154/149L 18PR|3302002218=295/80R22.5 UF195 154/149M 18PR|3302002429=295/80R22.5 UD223 154/149K 18PR|3302001815ab=235/75R17.5 UD188 143/141L 18PR|3302001861ab=215/75R17.5 UD188 135/133L 16PR|3302001609ab=215/75R17.5 UF195 135/133L 16PR|3302001608ab=235/75R17.5 UF195 143/141L 18PR. '
-      + 'REGRA PESO: Para pneus sem embalagem o peso liquido=bruto e aceitavel ter apenas um campo de peso. EXCECAO: fabricante NAKANKG exige peso bruto E liquido separados — se NAKANKG e peso liquido ausente = DIVERGENCIA. Se fabricante NAO for NAKANKG e peso tiver apenas um valor (G.W/N.W ou similar) = OK, nao alertar. ' + 'REGRAS ESPECIAIS: FOB+Collect=OK, FOB+Prepaid=ALERTA. CIF/CFR+Prepaid=OK, CIF/CFR+Collect=ALERTA. Consignatario BL/CE=importador(normal). CNPJ importador!=CNPJ buyer=normal. Transbordo=navio pode diferir. Numeros: 17.548,00=17548. Datas: 2026-03-23=23/03/2026. Data CE comparar APENAS com on board date BL.';
+      + 'REGRA PESO: Para pneus sem embalagem o peso liquido=bruto e aceitavel ter apenas um campo de peso. EXCECAO: fabricante NAKANKG exige peso bruto E liquido separados — se NAKANKG e peso liquido ausente = DIVERGENCIA. Se fabricante NAO for NAKANKG e peso tiver apenas um valor (G.W/N.W ou similar) = OK, nao alertar. '
+      + 'REGRAS ESPECIAIS: FOB+Collect=OK, FOB+Prepaid=ALERTA. CIF/CFR+Prepaid=OK, CIF/CFR+Collect=ALERTA. Consignatario BL/CE=importador(normal). CNPJ importador!=CNPJ buyer=normal. Transbordo=navio pode diferir. Numeros: 17.548,00=17548. Datas: 2026-03-23=23/03/2026. Data CE comparar APENAS com on board date BL.';
 
     content.push({type:'text',text:prompt});
 
@@ -1554,6 +1551,11 @@ async function runAnalysis(){
     }
     saveProcesses(processes);
     currentResult = proc;
+
+    // Restaurar divergências aceitas salvas no processo
+    if(proc._divResolvedMap){
+      Object.assign(divergResolved, proc._divResolvedMap);
+    }
 
     document.getElementById('loadingBox').classList.remove('show');
     renderResult(result);
@@ -1910,16 +1912,20 @@ function openGestaoModal(id, username){
         body += '<div style="font-size:10px;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px;">'+g.titulo+'</div>';
         campos.forEach(function(c){
           var color = c.status==='DIVERGENCIA' ? 'var(--danger)' : 'var(--warn)';
-          body += '<div style="padding:8px;border-radius:6px;background:rgba(220,38,38,0.04);border-left:3px solid '+color+';margin-bottom:6px;">';
+          var divKey = g.titulo+'-'+c.campo;
+          var aceito = p._divResolvedMap && p._divResolvedMap[divKey];
+          if(aceito) color = '#16a34a';
+          body += '<div style="padding:8px;border-radius:6px;background:'+(aceito?'rgba(22,163,74,0.04)':'rgba(220,38,38,0.04)')+';border-left:3px solid '+color+';margin-bottom:6px;">';
           body += '<div style="display:flex;justify-content:space-between;margin-bottom:4px;">';
           body += '<span style="font-size:12px;font-weight:600;">'+c.campo+'</span>';
-          body += '<span style="font-size:10px;font-weight:700;color:'+color+';">'+c.status+'</span>';
+          body += '<span style="font-size:10px;font-weight:700;color:'+color+';">'+(aceito?'✓ ACEITO':c.status)+'</span>';
           body += '</div>';
           body += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">';
           body += '<div style="font-size:11px;"><span style="color:var(--text-dim);">'+c.doc1_label+':</span> '+c.doc1_valor+'</div>';
           body += '<div style="font-size:11px;color:'+color+';font-weight:600;"><span style="color:var(--text-dim);">'+c.doc2_label+':</span> '+c.doc2_valor+'</div>';
           body += '</div>';
-          if(c.observacao) body += '<div style="font-size:11px;color:var(--text-dim);margin-top:4px;font-style:italic;">'+c.observacao+'</div>';
+          if(aceito) body += '<div style="font-size:11px;color:#16a34a;margin-top:5px;padding:4px 8px;background:rgba(22,163,74,0.08);border-radius:4px;">✓ Aceito por '+aceito.por+' em '+aceito.time+': <em>'+aceito.nota+'</em></div>';
+          if(c.observacao && !aceito) body += '<div style="font-size:11px;color:var(--text-dim);margin-top:4px;font-style:italic;">'+c.observacao+'</div>';
           body += '</div>';
         });
         body += '</div>';
@@ -2474,6 +2480,19 @@ if(divergResolved[key]){
   var notaEl3=panel.querySelector('.div-nota-'+i);
   if(notaEl3) notaEl3.style.borderColor='#16a34a';
   showToast('Aceito: '+nota.substring(0,40),'ok');
+  // Salvar motivo aceito no processo (persiste no localStorage e Firebase)
+  try{
+    var ref2a = document.getElementById('procRef') ? document.getElementById('procRef').value.trim() : '';
+    if(ref2a && currentResult){
+      var procs2a = getProcesses();
+      var proc2a = procs2a.find(function(p){ return p.ref===ref2a; });
+      if(proc2a){
+        proc2a._divResolvedMap = proc2a._divResolvedMap || {};
+        proc2a._divResolvedMap[key] = {nota:nota, time:new Date().toLocaleString('pt-BR'), por: _currentUser ? _currentUser.displayName : ''};
+        saveProcesses(procs2a);
+      }
+    }
+  }catch(e){}
   // Recalculate process status after accepting
   try{
     var allDivs = getDivergencias();
